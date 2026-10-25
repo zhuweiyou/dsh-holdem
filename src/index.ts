@@ -3,6 +3,7 @@ import { Config, resolveConfig, type PluginConfig } from './config.ts'
 import { PACKAGE_NAME } from './invariant.ts'
 import { registerHoldemHttp } from './net/routes.ts'
 import { registerHoldemSocket } from './net/ws.ts'
+import { QuickTunnel } from './net/tunnel.ts'
 import { createFileStore } from './persist/store.ts'
 import { RoomManager } from './room/RoomManager.ts'
 
@@ -26,14 +27,24 @@ export function apply(ctx: Context, config: PluginConfig): void {
     store: createFileStore(),
   })
 
+  const tunnel = new QuickTunnel(`http://127.0.0.1:${ctx.webServer.port}`, `${resolved.routePrefix}/api/ready`, (message) => {
+    ctx.logger?.info?.(message)
+  })
+
   ctx.effect(() => {
     const stopTick = manager.start()
-    const disposeHttp = registerHoldemHttp(ctx.webServer, manager)
+    const disposeHttp = registerHoldemHttp(ctx.webServer, manager, tunnel)
     const disposeWs = registerHoldemSocket(ctx.webServer, manager)
+    if (resolved.autoTunnel) {
+      void tunnel.start().then((status) => {
+        if (status.state === 'on' && status.url) manager.setPublicBaseUrl(status.url)
+      })
+    }
     return () => {
       stopTick()
       disposeHttp()
       disposeWs()
+      tunnel.stop()
       void manager.dispose()
     }
   }, 'holdem-p2p: room routes')

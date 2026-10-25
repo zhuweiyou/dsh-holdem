@@ -61,11 +61,10 @@ export function Settlement({ view }: { view: PlayerView }) {
             <button type="button" className={cx(css.btn, css.btnPrimary)} onClick={() => void again()}>
               {t('settle.again')}
             </button>
-          ) : (
-            <button type="button" className={cx(css.btn, css.btnPrimary)} onClick={() => void leaveRoom()}>
-              {t('common.back')}
-            </button>
-          )}
+          ) : null}
+          <button type="button" className={cx(css.btn, isHost ? css.btnOutline : css.btnPrimary)} onClick={() => void leaveRoom()}>
+            {t('settle.backHome')}
+          </button>
         </div>
       </div>
 

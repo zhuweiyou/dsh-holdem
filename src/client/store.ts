@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { ClientCommand, PlayerView, ServerEvent } from '../types.ts'
-import { ApiError, api, newActionId } from './api.ts'
+import { ApiError, api, newActionId, setSeatTokens } from './api.ts'
 import { browserId } from './presence.ts'
 import { t } from './i18n.ts'
 
@@ -19,6 +19,8 @@ export interface ClientState {
   view: PlayerView | null
   notice: string | null
   toast: Toast | null
+  /** 刚开完房：面板会自动把邀请弹窗打开一次，免得房主不知道怎么叫人。 */
+  autoInvite: boolean
 }
 
 let state: ClientState = {
@@ -28,6 +30,7 @@ let state: ClientState = {
   view: null,
   notice: null,
   toast: null,
+  autoInvite: false,
 }
 
 const listeners = new Set<() => void>()
@@ -37,6 +40,56 @@ let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 let toastSeq = 0
 let disposed = false
+
+syncSeatTokens()
+
+const ROOM_KEY = 'holdem-p2p:room'
+const SEATS_KEY = 'holdem-p2p:seats'
+
+/** 每个标签页自己保存每个房间的座位 token，并同步到请求头。 */
+function readSeats(): Record<string, string> {
+  try {
+    const raw = sessionStorage.getItem(SEATS_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function syncSeatTokens(): void {
+  setSeatTokens(Object.values(readSeats()))
+}
+
+function rememberSeat(roomId: string, token: string): void {
+  const seats = readSeats()
+  seats[roomId] = token
+  const ids = Object.keys(seats)
+  for (const stale of ids.slice(0, Math.max(0, ids.length - 5))) delete seats[stale]
+  try {
+    sessionStorage.setItem(SEATS_KEY, JSON.stringify(seats))
+  } catch {
+    // 隐私模式忽略
+  }
+  syncSeatTokens()
+}
+
+/** 每个标签页记住自己在哪个房间，刷新后不会跑到同一浏览器里最新开的那个房间。 */
+function rememberRoom(roomId: string | null): void {
+  try {
+    if (roomId) sessionStorage.setItem(ROOM_KEY, roomId)
+    else sessionStorage.removeItem(ROOM_KEY)
+  } catch {
+    // 隐私模式下忽略
+  }
+}
+
+function rememberedRoom(): string | null {
+  try {
+    return sessionStorage.getItem(ROOM_KEY)
+  } catch {
+    return null
+  }
+}
 
 function set(patch: Partial<ClientState>): void {
   state = { ...state, ...patch }
@@ -65,6 +118,11 @@ export function toast(text: string, kind: 'info' | 'error' = 'info'): void {
   toastTimer = setTimeout(() => {
     set({ toast: null })
   }, kind === 'error' ? 4200 : 2600)
+}
+
+/** 邀请弹窗已经自动弹过一次了。 */
+export function consumeAutoInvite(): void {
+  if (state.autoInvite) set({ autoInvite: false })
 }
 
 export function clearToast(): void {
@@ -213,6 +271,7 @@ async function recoverSession(roomId: string): Promise<void> {
   }
   if (session?.inRoom && session.view) {
     const next = session.view.room.roomId
+    rememberRoom(next)
     set({ view: session.view, notice: null })
     if (next !== roomId) toast(t('toast.switched', { code: session.view.room.roomCode }))
     try {
@@ -225,8 +284,10 @@ async function recoverSession(roomId: string): Promise<void> {
     }
     return
   }
+  rememberRoom(null)
   closeChannel()
-  set({ view: null, connection: 'idle', notice: t('error.roomGone') })
+  const noCookie = session !== null && !session.inRoom && (session.seatCookies ?? 1) === 0
+  set({ view: null, connection: 'idle', notice: noCookie ? t('error.noSeatCookie') : t('error.roomGone') })
 }
 
 // ------------------------------------------------------------------ 生命周期
@@ -236,8 +297,10 @@ export async function bootstrap(): Promise<void> {
   if (disposed) disposed = false
   else if (state.booted) return
   try {
-    const session = await api.session()
+    syncSeatTokens()
+    const session = await api.session(rememberedRoom() ?? undefined)
     if (session.inRoom && session.view) {
+      rememberRoom(session.view.room.roomId)
       set({ view: session.view })
       try {
         const { wsTicket } = await api.wsTicket(session.view.room.roomId)
@@ -261,14 +324,16 @@ export function dispose(): void {
   toastTimer = undefined
   listeners.clear()
   socket = null
-  state = { booted: false, busy: false, connection: 'idle', view: null, notice: null, toast: null }
+  state = { booted: false, busy: false, connection: 'idle', view: null, notice: null, toast: null, autoInvite: false }
 }
 
 export async function createRoom(input: { title?: string | undefined; blindLevel: string; displayName: string }): Promise<void> {
   set({ busy: true })
   try {
     const created = await api.createRoom({ ...input, browserId: browserId() })
-    set({ view: created.view, busy: false, notice: null })
+    rememberRoom(created.view.room.roomId)
+    rememberSeat(created.view.room.roomId, created.sessionToken)
+    set({ view: created.view, busy: false, notice: null, autoInvite: true })
     toast(t('toast.created', { code: created.roomCode }))
     connectChannel(created.view.room.roomId, created.wsTicket)
   } catch (error) {
@@ -287,6 +352,8 @@ export async function joinRoom(input: {
   set({ busy: true })
   try {
     const joined = await api.join({ ...input, browserId: browserId() })
+    rememberRoom(joined.view.room.roomId)
+    rememberSeat(joined.view.room.roomId, joined.sessionToken)
     set({ view: joined.view, busy: false, notice: null })
     toast(t('toast.joined', { code: joined.view.room.roomCode }))
     connectChannel(joined.view.room.roomId, joined.wsTicket)
@@ -303,6 +370,7 @@ export async function leaveRoom(): Promise<void> {
   } catch {
     // 房间可能已解散
   }
+  rememberRoom(null)
   closeChannel()
   set({ view: null, connection: 'idle', notice: null })
   toast(t('toast.left'))

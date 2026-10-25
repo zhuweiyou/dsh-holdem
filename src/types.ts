@@ -133,8 +133,8 @@ export interface RoomView {
   nextHandAt: string | null
   seq: number
   shareable: boolean
-  sitUrl: string
-  watchUrl: string
+  /** 一条链接搞定：有空位就入座，没空位自动转观战。 */
+  joinUrl: string
 }
 
 export interface YouView {

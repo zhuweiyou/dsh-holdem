@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { PlayerView, SeatView, TableAction } from '../types.ts'
 import { ActionBar } from './ActionBar.tsx'
+import { InviteSheet } from './InviteSheet.tsx'
 import { CardBack, CardSlot, CardView } from './CardView.tsx'
 import { SeatPod } from './SeatPod.tsx'
 import { SideRail } from './SideRail.tsx'
 import { t } from './i18n.ts'
-import { leaveRoom, runCommand, useClientState } from './store.ts'
+import { consumeAutoInvite, leaveRoom, runCommand, useClientState } from './store.ts'
 import { copyText, cx, formatChips, signedChips } from './ui.ts'
 import css from './styles.module.css'
 
@@ -22,6 +23,7 @@ export function Table({ view }: { view: PlayerView }) {
   const nextHandSeconds = useCountdown(room.nextHandAt)
   const isHost = room.hostPlayerId === view.you.playerId
   const base = youSeat ?? 0
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -30,8 +32,15 @@ export function Table({ view }: { view: PlayerView }) {
     return () => clearTimeout(timer)
   }, [copied])
 
-  const copyInvite = async (): Promise<void> => {
-    const ok = await copyText(room.sitUrl)
+  // 刚开完房：自动打开一次邀请面板，房主不用找入口
+  useEffect(() => {
+    if (!state.autoInvite) return
+    setInviteOpen(true)
+    consumeAutoInvite()
+  }, [state.autoInvite])
+
+  const copyCode = async (): Promise<void> => {
+    const ok = await copyText(room.roomCode)
     if (ok) setCopied(true)
   }
 
@@ -48,9 +57,12 @@ export function Table({ view }: { view: PlayerView }) {
         <div className={css.headerMain}>
           <div className={css.titleRow}>
             <h1 className={css.roomTitle}>{room.title}</h1>
-            <button type="button" className={css.codeChip} onClick={() => void copyInvite()} title={t('table.copyInvite')}>
+            <button type="button" className={css.codeChip} onClick={() => void copyCode()} title={t('table.copyCode')}>
               {t('table.room', { code: room.roomCode })}
               {copied ? <span className={css.copiedTag}>{t('common.copied')}</span> : null}
+            </button>
+            <button type="button" className={cx(css.btn, css.inviteBtn)} onClick={() => setInviteOpen(true)}>
+              {t('table.invite')}
             </button>
             <span className={cx(css.phasePill, room.phase === 'hand' ? css.phasePillHand : css.phasePillLobby)}>
               {room.phase === 'hand' ? t('lobby.phase.hand') : t('lobby.phase.lobby')}
@@ -63,6 +75,11 @@ export function Table({ view }: { view: PlayerView }) {
               {state.connection === 'live' ? '●' : state.connection === 'polling' ? '◐' : '○'}
             </span>
             <span className={css.spectatorCount}>{t('common.spectators', { n: view.spectators.length })}</span>
+            {room.shareable ? null : (
+              <button type="button" className={css.localTag} onClick={() => setInviteOpen(true)}>
+                {t('table.localOnly')}
+              </button>
+            )}
           </div>
         </div>
         <div className={css.headerActions}>
@@ -122,6 +139,15 @@ export function Table({ view }: { view: PlayerView }) {
                       className={css[`pos${rel}`]}
                       canSit={emptySeat && room.phase === 'lobby' && view.you.spectator}
                       onSit={() => void runCommand({ type: 'sit' })}
+                      onKick={
+                        isHost && room.phase === 'lobby' && seat.playerId !== null && seat.playerId !== view.you.playerId
+                          ? () => {
+                            if (window.confirm(t('table.kickConfirm', { name: seat.displayName ?? '' }))) {
+                              void runCommand({ type: 'hostKick', playerId: seat.playerId as never })
+                            }
+                          }
+                          : undefined
+                      }
                     />
                   )
                 })}
@@ -261,6 +287,8 @@ export function Table({ view }: { view: PlayerView }) {
             )}
           </div>
         </div>
+
+        {inviteOpen ? <InviteSheet view={view} onClose={() => setInviteOpen(false)} /> : null}
 
         {railOpen ? (
           <div className={css.railWrap}>

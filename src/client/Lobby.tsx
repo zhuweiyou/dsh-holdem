@@ -8,6 +8,40 @@ import { browserId, clearDeepLink, parseDeepLink, rememberName, rememberedName }
 import { cx, formatChips } from './ui.ts'
 import css from './styles.module.css'
 
+const NPM_URL = 'https://www.npmjs.com/package/dsh-holdem-p2p'
+
+interface JoinInput {
+  code: string
+  invite: string
+  link: string | null
+  sameHost: boolean
+}
+
+/** 加入输入框同时吃「邀请链接」和「6 位房号」。 */
+function parseJoinInput(text: string, fallbackInvite: string): JoinInput {
+  const trimmed = text.trim()
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed)
+      const code = (url.searchParams.get('code') ?? '').replace(/\D/g, '').slice(0, 6)
+      const sameHost = typeof location !== 'undefined' && url.host === location.host
+      return { code, invite: url.searchParams.get('invite') ?? fallbackInvite, link: trimmed, sameHost }
+    } catch {
+      // 不是合法 URL 就按房号处理
+    }
+  }
+  return { code: trimmed.replace(/\D/g, '').slice(0, 6), invite: fallbackInvite, link: null, sameHost: true }
+}
+
+function buildLabel(): string {
+  const raw = typeof __HOLDEM_BUILD__ === 'string' ? __HOLDEM_BUILD__ : ''
+  const date = raw ? new Date(raw) : null
+  const stamp = date && !Number.isNaN(date.getTime())
+    ? date.toLocaleTimeString(undefined, { hour12: false }).slice(0, 5)
+    : ''
+  return stamp ? `dsh-holdem-p2p · build ${stamp}` : 'dsh-holdem-p2p · dev'
+}
+
 export function Lobby() {
   const state = useClientState()
   const deepLink = parseDeepLink()
@@ -15,8 +49,8 @@ export function Lobby() {
   const [name, setName] = useState(() => rememberedName())
   const [title, setTitle] = useState('')
   const [blindLevel, setBlindLevel] = useState<string>('25/50')
-  const [code, setCode] = useState(deepLink?.code ?? '')
-  const [invite] = useState(deepLink?.invite ?? '')
+  const [joinText, setJoinText] = useState(deepLink?.code ?? '')
+  const [invite, setInvite] = useState(deepLink?.invite ?? '')
   const [preview, setPreview] = useState<RoomPreview | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,16 +86,19 @@ export function Lobby() {
 
   const submitPreview = async (): Promise<void> => {
     setError(null)
-    const digits = code.replace(/\D/g, '').slice(0, 6)
-    if (digits.length !== 6) {
-      setError(t('lobby.needCode'))
+    const parsed = parseJoinInput(joinText, invite)
+    if (parsed.code.length !== 6) {
+      setError(t('lobby.needCodeOrLink'))
       return
     }
+    setInvite(parsed.invite)
     try {
-      const result = await api.preview({ code: digits, invite: invite || undefined, role: deepLink?.role, browserId: browserId() })
+      // 先按「这张桌就在本机」查：链接和房号都走这条，能在面板里玩就直接玩
+      const result = await api.preview({ code: parsed.code, invite: parsed.invite || undefined, browserId: browserId() })
       setPreview(result)
     } catch (reason) {
       setPreview(null)
+      if (openElsewhere(reason, parsed.link)) return
       setError(reason instanceof ApiError ? reason.message : t('error.generic'))
     }
   }
@@ -72,14 +109,31 @@ export function Lobby() {
       setError(t('lobby.needName'))
       return
     }
+    const parsed = parseJoinInput(joinText, invite)
+    if (parsed.code.length !== 6) {
+      setError(t('lobby.needCodeOrLink'))
+      return
+    }
     rememberName(name.trim())
-    const roomCode = code.replace(/\D/g, '').slice(0, 6)
     try {
-      await joinRoom({ roomCode, invite: invite || undefined, displayName: name.trim(), role })
+      await joinRoom({ roomCode: parsed.code, invite: parsed.invite || undefined, displayName: name.trim(), role })
       clearDeepLink()
     } catch (reason) {
+      if (openElsewhere(reason, parsed.link)) return
       setError(reason instanceof Error ? reason.message : t('error.generic'))
     }
+  }
+
+  /**
+   * 本机找不到这张桌（链接是别人机器上的）时，退回网页版：直接开它的 /play。
+   * 本机能找到桌的话就在 DSH 面板里玩。
+   */
+  const openElsewhere = (reason: unknown, link: string | null): boolean => {
+    const remote = reason instanceof ApiError && (reason.code === 'room-not-found' || reason.code === 'expired' || reason.status === 404)
+    if (!remote || !link) return false
+    window.open(link, '_blank', 'noopener')
+    setError(t('lobby.linkOpened'))
+    return true
   }
 
   return (
@@ -152,14 +206,15 @@ export function Lobby() {
           <>
             {deepLink ? <div className={css.inviteBanner}>{t('lobby.invited', { code: deepLink.code })}</div> : null}
             <label className={css.field}>
-              <span className={css.fieldLabel}>{t('lobby.code')}</span>
+              <span className={css.fieldLabel}>{t('lobby.codeOrLink')}</span>
               <input
-                className={cx(css.input, css.inputCode)}
-                value={code}
-                inputMode="numeric"
-                maxLength={6}
-                placeholder={t('lobby.codePlaceholder')}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                className={cx(css.input, /^\s*https?:/i.test(joinText) ? undefined : css.inputCode)}
+                value={joinText}
+                placeholder={t('lobby.codeOrLinkPlaceholder')}
+                onChange={(event) => {
+                  setJoinText(event.target.value)
+                  setPreview(null)
+                }}
               />
             </label>
             <button type="button" className={cx(css.btn, css.btnOutline, css.btnWide)} disabled={state.busy} onClick={() => void submitPreview()}>
@@ -187,20 +242,20 @@ export function Lobby() {
                 </div>
                 {preview.alreadyInRoom ? (
                   <button type="button" className={cx(css.btn, css.btnPrimary, css.btnWide)} disabled={state.busy} onClick={() => void submitJoin('sit')}>
-                    回到房间
+                    {t('lobby.backToRoom')}
                   </button>
                 ) : (
                   <div className={css.previewActions}>
                     <button
                       type="button"
                       className={cx(css.btn, css.btnPrimary)}
-                      disabled={state.busy || !preview.canSit}
+                      disabled={state.busy}
                       onClick={() => void submitJoin('sit')}
                     >
-                      {t('lobby.sit')}
+                      {t('lobby.enter')}
                     </button>
                     <button type="button" className={cx(css.btn, css.btnGhost)} disabled={state.busy} onClick={() => void submitJoin('watch')}>
-                      {t('lobby.watch')}
+                      {t('lobby.watchOnly')}
                     </button>
                   </div>
                 )}
@@ -211,7 +266,14 @@ export function Lobby() {
         )}
       </div>
 
-      <p className={css.hint}>{t('lobby.hint')}</p>
+      <p className={css.hint}>
+        {t('lobby.hintPrefix')}
+        <a className={css.hintLink} href={NPM_URL} target="_blank" rel="noreferrer">
+          dsh-holdem-p2p
+        </a>
+        {t('lobby.hintSuffix')}
+      </p>
+      <p className={css.buildTag}>{buildLabel()}</p>
     </div>
   )
 }

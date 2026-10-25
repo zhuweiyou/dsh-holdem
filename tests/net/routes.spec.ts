@@ -13,11 +13,24 @@ interface Jar {
 let server: Server
 let base = ''
 let manager: RoomManager
+const stubTunnel = {
+  value: { state: 'off' as string, url: '', target: 'http://127.0.0.1:0', error: '' },
+  getStatus() {
+    return { ...this.value }
+  },
+  async start() {
+    this.value = { state: 'on', url: 'https://demo.trycloudflare.com', target: 'http://127.0.0.1:0', error: '' }
+    return this.value
+  },
+  stop() {
+    this.value = { state: 'off', url: '', target: 'http://127.0.0.1:0', error: '' }
+  },
+}
 let prefix = '/holdem-p2p'
 
 beforeAll(async () => {
   manager = new RoomManager({
-    config: resolveConfig({ publicBaseUrl: '', defaultBlindLevel: '25/50', autoAdvanceSec: 2 }),
+    config: resolveConfig({ publicBaseUrl: '', autoTunnel: false, defaultBlindLevel: '25/50', autoAdvanceSec: 2 }),
     origin: () => 'http://127.0.0.1:0',
     now: Date.now,
     store: noopStore,
@@ -39,7 +52,7 @@ beforeAll(async () => {
       return () => undefined
     },
   }
-  registerHoldemHttp(fake, manager)
+  registerHoldemHttp(fake, manager, stubTunnel)
   server = createServer((req, res) => {
     const route = routes.find((entry) => (req.url ?? '').startsWith(entry.path))
     if (!route) {
@@ -114,7 +127,17 @@ describe('HTTP 路由', () => {
 
     const page = await fetch(`${base}${prefix}/join?code=123456&invite=x&role=sit`)
     expect(page.status).toBe(200)
-    expect(await page.text()).toContain('dsh-holdem-p2p')
+    const joinHtml = await page.text()
+    expect(joinHtml).toContain('进入牌桌')
+    expect(joinHtml).toContain(`${prefix}/play?code=123456`)
+
+    // 独立牌桌页：对方不用装 DSH 也能玩
+    const play = await fetch(`${base}${prefix}/play?code=123456&invite=x&role=sit`)
+    expect(play.status).toBe(200)
+    const playHtml = await play.text()
+    expect(playHtml).toContain('加入牌桌')
+    expect(playHtml).toContain("'x-holdem-seat'")
+    expect(playHtml).not.toContain('__DSH_BOOT__')
   })
 
   it('变更请求缺少 CSRF 头会被拒绝', async () => {
@@ -218,6 +241,65 @@ describe('HTTP 路由', () => {
     expect(stateAAfter.status).toBe(403)
     const stateBAfter = await call<{ view: { room: { roomId: string } } }>(`${prefix}/api/rooms/${secondId}/state`, { jar })
     expect(stateBAfter.status).toBe(200)
+  })
+
+  it('没有 cookie 时用 x-holdem-seat 请求头也能认人', async () => {
+    const jar: Jar = {}
+    const created = await call<{ sessionToken: string; view: { room: { roomId: string } } }>(`${prefix}/api/rooms`, {
+      method: 'POST',
+      body: { title: '无 cookie', displayName: '头认证' },
+      jar,
+    })
+    expect(created.status).toBe(200)
+    expect(created.body.sessionToken).toBeTruthy()
+    const roomId = created.body.view.room.roomId
+
+    // 故意不带 cookie，只带请求头
+    const bare: Jar = {}
+    const response = await fetch(`${base}${prefix}/api/rooms/${roomId}/state`, {
+      headers: { origin: base, 'x-holdem-seat': created.body.sessionToken },
+    })
+    expect(response.status).toBe(200)
+    const payload = (await response.json()) as { view: { room: { roomId: string } } }
+    expect(payload.view.room.roomId).toBe(roomId)
+
+    const session = await fetch(`${base}${prefix}/api/session`, {
+      headers: { origin: base, 'x-holdem-seat': created.body.sessionToken },
+    })
+    const sessionBody = (await session.json()) as { inRoom: boolean }
+    expect(sessionBody.inRoom).toBe(true)
+    expect(bare.cookie).toBeUndefined()
+  })
+
+  it('内置隧道接口能开能关，并把 publicBaseUrl 换成公网地址', async () => {
+    const jar: Jar = {}
+    const created = await call<{ roomCode: string; shareable: boolean; joinUrl: string }>(`${prefix}/api/rooms`, {
+      method: 'POST',
+      body: { title: '隧道桌', displayName: '房主' },
+      jar,
+    })
+    expect(created.body.shareable).toBe(false)
+    expect(created.body.joinUrl.startsWith('http://127.0.0.1')).toBe(true)
+
+    const off = await call<{ state: string }>(`${prefix}/api/tunnel`, { jar })
+    expect(off.body.state).toBe('off')
+
+    const started = await call<{ state: string; url: string }>(`${prefix}/api/tunnel?action=start`, {
+      method: 'POST',
+      body: {},
+      jar,
+    })
+    expect(started.status).toBe(200)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const room = await call<{ view: { room: { shareable: boolean; joinUrl: string } } }>(`${prefix}/api/session`, { jar })
+    expect(room.body.view.room.shareable).toBe(true)
+    expect(room.body.view.room.joinUrl.startsWith('https://demo.trycloudflare.com')).toBe(true)
+
+    const stopped = await call<{ state: string }>(`${prefix}/api/tunnel?action=stop`, { method: 'POST', body: {}, jar })
+    expect(stopped.body.state).toBe('off')
+    const after = await call<{ view: { room: { shareable: boolean } } }>(`${prefix}/api/session`, { jar })
+    expect(after.body.view.room.shareable).toBe(false)
   })
 
   it('动作接口校验 baseSeq 并回传最新视图', async () => {

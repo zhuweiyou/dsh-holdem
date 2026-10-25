@@ -1,3 +1,6 @@
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -12,6 +15,17 @@ interface SocketState {
   playerId: PlayerId
   roomId: RoomId
   lastSeen: number
+}
+
+/** 临时诊断日志：WS 升级成功/失败都记一条。 */
+function traceWs(line: Record<string, unknown>): void {
+  try {
+    const dir = join(homedir(), '.dsh', 'holdem-p2p')
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(join(dir, 'debug.jsonl'), JSON.stringify({ at: new Date().toISOString(), ws: true, ...line }) + '\n')
+  } catch {
+    // ignore
+  }
 }
 
 export function registerHoldemSocket(server: WebServer, manager: RoomManager): () => void {
@@ -45,7 +59,8 @@ export function registerHoldemSocket(server: WebServer, manager: RoomManager): (
     handler: (req, socket, head) => {
       try {
         assertOrigin(req as IncomingMessage, manager.getConfig().publicBaseUrl)
-      } catch {
+      } catch (error) {
+        traceWs({ outcome: 'reject-origin', origin: req.headers.origin ?? null, host: req.headers.host ?? null, message: String(error) })
         reject(socket, '403 Forbidden')
         return
       }
@@ -53,9 +68,11 @@ export function registerHoldemSocket(server: WebServer, manager: RoomManager): (
       const ticket = url.searchParams.get('ticket') ?? ''
       const consumed = manager.consumeTicket(ticket)
       if (!consumed) {
+        traceWs({ outcome: 'reject-ticket', origin: req.headers.origin ?? null, host: req.headers.host ?? null, hasTicket: ticket !== '' })
         reject(socket, '401 Unauthorized')
         return
       }
+      traceWs({ outcome: 'open', origin: req.headers.origin ?? null, host: req.headers.host ?? null })
       wss.handleUpgrade(req as IncomingMessage, socket as Duplex, head, (ws) => {
         const state: SocketState = { playerId: consumed.playerId, roomId: consumed.roomId, lastSeen: Date.now() }
         sockets.set(ws, state)

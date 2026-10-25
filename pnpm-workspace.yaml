@@ -1,3 +1,5 @@
 allowBuilds:
+  cloudflared: true
   esbuild: true
+
 # Single-package repo. Root is always a workspace member.

@@ -29,6 +29,7 @@ export function clientConfig(id: string, entry: string): UserConfig {
     external: [...CLIENT_EXTERNALS],
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
+      __HOLDEM_BUILD__: JSON.stringify(new Date().toISOString()),
     },
     noExternal: (moduleId: string) => (CLIENT_EXTERNALS.includes(moduleId) ? undefined : true),
     plugins: [{

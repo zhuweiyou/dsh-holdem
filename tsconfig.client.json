@@ -14,6 +14,7 @@
     "src/engine/rank.ts",
     "src/engine/cards.ts",
     "types/css-modules.d.ts",
+    "types/build.d.ts",
     "types/shims/dsh-client-runtime.ts",
     "types/shims/dsh-client-ui-slots.ts",
     "types/shims/dsh-client-locale.ts"

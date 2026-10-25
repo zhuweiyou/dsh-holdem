@@ -6,6 +6,13 @@ const HEADERS = {
   'x-requested-with': 'dsh-holdem-p2p',
 }
 
+/** 座位 token 走请求头，不依赖浏览器是否保留 cookie。 */
+let seatTokens: string[] = []
+
+export function setSeatTokens(tokens: string[]): void {
+  seatTokens = [...new Set(tokens.filter((token) => token !== ''))]
+}
+
 export class ApiError extends Error {
   readonly code: string
   readonly status: number
@@ -24,7 +31,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${PREFIX}${path}`, {
     credentials: 'same-origin',
     ...init,
-    headers: { ...HEADERS, ...(init.headers as Record<string, string> | undefined) },
+    headers: {
+      ...HEADERS,
+      ...(seatTokens.length > 0 ? { 'x-holdem-seat': seatTokens.join(',') } : {}),
+      ...(init.headers as Record<string, string> | undefined),
+    },
   })
   const text = await response.text()
   const body = (text ? JSON.parse(text) : {}) as T & { error?: string; message?: string; view?: PlayerView }
@@ -38,10 +49,10 @@ export interface CreateRoomResponse {
   roomId: string
   roomCode: string
   hostPlayerId: string
-  sitUrl: string
-  watchUrl: string
+  joinUrl: string
   shareable: boolean
   wsTicket: string
+  sessionToken: string
   view: PlayerView
 }
 
@@ -50,13 +61,24 @@ export interface JoinResponse {
   roomId: string
   seat: number | null
   wsTicket: string
+  sessionToken: string
   view: PlayerView
+}
+
+export interface TunnelStatus {
+  state: 'off' | 'starting' | 'on' | 'error'
+  url: string
+  target: string
+  error: string
+  warning?: string
 }
 
 export interface SessionResponse {
   inRoom: boolean
   roomId?: string
   view?: PlayerView
+  /** 浏览器实际带上来几个座位凭证（0 说明 cookie 没存/被拦）。 */
+  seatCookies?: number
 }
 
 export interface StateResponse {
@@ -78,8 +100,9 @@ export const api = {
   join(input: { roomCode: string; invite?: string | undefined; displayName: string; role: 'sit' | 'watch'; browserId?: string | undefined }) {
     return request<JoinResponse>('/api/join', { method: 'POST', body: JSON.stringify(input) })
   },
-  session() {
-    return request<SessionResponse>('/api/session')
+  session(roomId?: string) {
+    const query = roomId ? `?roomId=${encodeURIComponent(roomId)}` : ''
+    return request<SessionResponse>(`/api/session${query}`)
   },
   state(roomId: string) {
     return request<StateResponse>(`/api/rooms/${encodeURIComponent(roomId)}/state`)
@@ -105,6 +128,15 @@ export const api = {
   },
   history(roomId: string) {
     return request<{ summary: SessionSummary | null }>(`/api/rooms/${encodeURIComponent(roomId)}/history`)
+  },
+  tunnel() {
+    return request<TunnelStatus>('/api/tunnel')
+  },
+  tunnelStart() {
+    return request<TunnelStatus>('/api/tunnel?action=start', { method: 'POST', body: '{}' })
+  },
+  tunnelStop() {
+    return request<TunnelStatus>('/api/tunnel?action=stop', { method: 'POST', body: '{}' })
   },
   ready() {
     return request<{ ok: boolean; plugin: string; shareable: boolean }>('/api/ready')

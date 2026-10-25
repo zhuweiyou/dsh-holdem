@@ -37,11 +37,18 @@ dsh plugin --profile desktop add /绝对路径/dsh-holdem-p2p
 房间规则：6 人上限；座位满后新来的人自动观战；观战者可以在等待阶段或有人离座时
 补位；一手进行中离开等于弃牌，本手结束后释放座位。
 
+同一个浏览器可以开多个标签页各待在自己的房间：座位凭证按房间分开发放（`hdm_seat_<房间 id>`），
+新建或加入别的房间不会让原来那桌掉线；每个标签页也会记住自己的房间，刷新后回到原桌。
+
 ## 界面
 
 ![大厅](docs/screenshots/lobby.png)
 
 ![牌桌](docs/screenshots/table.png)
+
+![加入房间](docs/screenshots/join.png)
+
+![邀请面板](docs/screenshots/invite.png)
 
 ![本场结算](docs/screenshots/settlement.png)
 
@@ -51,14 +58,16 @@ dsh plugin --profile desktop add /绝对路径/dsh-holdem-p2p
 
 ## 叫人加入
 
-跨机器需要你先把 **publicBaseUrl** 配成外部能访问到这台 `dsh web` 的地址
-（例如 Cloudflare Tunnel），否则邀请链接只能在本机打开：
+开房时插件会**自动起一条 cloudflared 临时隧道**（quick tunnel，不需要 Cloudflare 账号，
+也不用配任何东西），拿到 `https://xxx.trycloudflare.com` 之后，房间的邀请链接就是这个公网地址。
+点右上角「邀请好友」，入座/观战链接直接复制发过去即可——对方在浏览器里就能玩，
+**不需要装 DSH、也不需要装本插件**（牌桌是插件自己发的独立网页）。
 
-```
-Settings → Plugins → dsh-holdem-p2p → publicBaseUrl
-```
-
-朋友也需要安装本插件。邀请页会先检查 DSH 与插件是否就绪，再让人点「进入牌桌」。
+- 隧道随时可以在邀请面板里关掉/重开（关掉后链接退回 `127.0.0.1`）。
+- 第一次拉起会用到 `cloudflared`：优先用 PATH 里的，其次用 npm 依赖自带的，都没有才会下载一次。
+- 本机装了代理（Clash 等）时，记得把 `*.trycloudflare.com` 设为直连，否则链接打不开——
+  插件的自检会直接提示这一点。
+- 想固定域名/自建隧道：把 `publicBaseUrl` 配成你的地址即可覆盖自动生成的地址。
 
 ## 设置
 

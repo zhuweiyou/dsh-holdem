@@ -66,6 +66,26 @@ describe('房间与入座', () => {
     expect(rejoined.seat).toBe(0)
   })
 
+  it('解散后能看结算，离开后可以再开新房', () => {
+    const { manager } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '客人', local: true })
+    manager.command(host.roomId, host.hostPlayerId, { type: 'hostDissolve' })
+
+    // 结算阶段会话还在
+    expect(manager.sessionByToken(host.sessionToken)).toBeTruthy()
+    expect(manager.view(host.roomId, host.hostPlayerId).settlement).toBeTruthy()
+
+    // 点「返回大厅」：座位与会话清掉
+    manager.leave(host.hostPlayerId)
+    expect(manager.sessionByToken(host.sessionToken)).toBeUndefined()
+
+    // 还能再开一桌
+    const next = manager.createRoom({ displayName: '房主' })
+    expect(next.roomCode).not.toBe(host.roomCode)
+    expect(next.sessionToken).toBeTruthy()
+  })
+
   it('房主可以踢人，被踢者收到事件', () => {
     const { manager } = setup()
     const host = manager.createRoom({ displayName: '房主' })

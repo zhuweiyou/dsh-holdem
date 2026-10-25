@@ -1,4 +1,4 @@
-import type { ResolvedConfig } from '../config.ts'
+import { validatePublicBaseUrl, type ResolvedConfig } from '../config.ts'
 import type {
   ChatLine,
   ClientCommand,
@@ -145,8 +145,7 @@ export interface CreateRoomResult {
   roomId: RoomId
   roomCode: string
   hostPlayerId: PlayerId
-  sitUrl: string
-  watchUrl: string
+  joinUrl: string
   shareable: boolean
   wsTicket: string
   sessionToken: string
@@ -202,6 +201,11 @@ export class RoomManager {
 
   getConfig(): ResolvedConfig {
     return this.config
+  }
+
+  /** 内置隧道拿到地址后，运行时把对外地址换掉（影响邀请链接与 shareable）。 */
+  setPublicBaseUrl(url: string): void {
+    this.config.publicBaseUrl = url.trim() === '' ? '' : validatePublicBaseUrl(url)
   }
 
   replaceConfig(config: ResolvedConfig): void {
@@ -292,14 +296,12 @@ export class RoomManager {
 
     const session = this.newSession(room, host.playerId, 'host')
     const base = this.config.publicBaseUrl || this.origin()
-    const sitUrl = `${base}${this.config.routePrefix}/join?code=${code}&invite=${encodeURIComponent(sitToken)}&role=sit`
-    const watchUrl = `${base}${this.config.routePrefix}/join?code=${code}&invite=${encodeURIComponent(watchToken)}&role=watch`
+    const joinUrl = `${base}${this.config.routePrefix}/play?code=${code}&invite=${encodeURIComponent(sitToken)}&role=auto`
     return {
       roomId,
       roomCode: code,
       hostPlayerId: host.playerId,
-      sitUrl,
-      watchUrl,
+      joinUrl,
       shareable: this.config.publicBaseUrl !== '',
       wsTicket: this.issueTicket(host.playerId, roomId),
       sessionToken: session.token,
@@ -395,6 +397,12 @@ export class RoomManager {
   leave(playerId: PlayerId): void {
     const room = this.roomOf(playerId)
     if (!room) return
+    if (room.phase === 'closed') {
+      // 结算页点「返回大厅」：把座位与会话清掉，别让旧房间一直挂着
+      this.removePlayer(room, playerId)
+      this.dropSessionsOf(room, playerId)
+      return
+    }
     if (room.hostPlayerId === playerId) {
       this.dissolve(room, 'host-dissolved')
       return
@@ -906,8 +914,7 @@ export class RoomManager {
       nextHandAt: room.handOverAt === null ? null : new Date(room.handOverAt).toISOString(),
       seq: room.seq,
       shareable: this.config.publicBaseUrl !== '',
-      sitUrl: `${this.config.publicBaseUrl || this.origin()}${this.config.routePrefix}/join?code=${room.roomCode}&invite=${encodeURIComponent(room.sitToken)}&role=sit`,
-      watchUrl: `${this.config.publicBaseUrl || this.origin()}${this.config.routePrefix}/join?code=${room.roomCode}&invite=${encodeURIComponent(room.watchToken)}&role=watch`,
+      joinUrl: `${this.config.publicBaseUrl || this.origin()}${this.config.routePrefix}/play?code=${room.roomCode}&invite=${encodeURIComponent(room.sitToken)}&role=auto`,
     }
 
     const leaderboard: LeaderboardEntry[] = [...room.stats.entries()]

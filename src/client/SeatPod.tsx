@@ -15,9 +15,22 @@ export interface SeatPodProps {
   className?: string | undefined
   canSit?: boolean | undefined
   onSit?: (() => void) | undefined
+  onKick?: (() => void) | undefined
 }
 
-export function SeatPod({ seat, isYou, isActor, secondsLeft, isDealer, blind, shown, className, canSit, onSit }: SeatPodProps) {
+export function SeatPod({
+  seat,
+  isYou,
+  isActor,
+  secondsLeft,
+  isDealer,
+  blind,
+  shown,
+  className,
+  canSit,
+  onSit,
+  onKick,
+}: SeatPodProps) {
   if (!seat.playerId) {
     return (
       <div className={cx(css.seat, css.seatEmpty, className)}>
@@ -80,14 +93,21 @@ export function SeatPod({ seat, isYou, isActor, secondsLeft, isDealer, blind, sh
         </div>
       </div>
 
-      <div className={css.seatCards}>
-        {shown
-          ? shown.cards.map((card) => <CardView key={card} card={card} size="sm" dim={out} />)
-          : Array.from({ length: seat.holeCount }, (_, index) => (
-            <CardBack key={index} size="sm" />
-          ))}
-      </div>
+      {shown || seat.holeCount > 0 ? (
+        <div className={css.seatCards}>
+          {shown
+            ? shown.cards.map((card) => <CardView key={card} card={card} size="sm" dim={out} />)
+            : Array.from({ length: seat.holeCount }, (_, index) => (
+              <CardBack key={index} size="sm" />
+            ))}
+        </div>
+      ) : null}
 
+      {onKick ? (
+        <button type="button" className={css.kickBtn} title={t('table.kick')} onClick={onKick}>
+          ✕
+        </button>
+      ) : null}
       {seat.committed > 0 ? <div className={css.betChip}>{formatChips(seat.committed)}</div> : null}
       {shown ? <div className={css.handName}>{shown.name}</div> : null}
     </div>

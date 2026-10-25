@@ -1,3 +1,6 @@
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebServer } from '@deepseek-ai/cordis'
 import { type ClientCommand } from '../types.ts'
@@ -6,46 +9,119 @@ import type { RoomManager } from '../room/RoomManager.ts'
 import { assertMutatingHeaders, assertOrigin, cookieHeader, header, isLoopbackHost, parseCookies } from './auth.ts'
 import { encodeJson, readJson } from './json.ts'
 import { joinPageHtml } from './join-page.ts'
+import { playPageHtml } from './play-page.ts'
 
 /** 每个房间一个座位 cookie：同一个浏览器可以同时待在不同房间的多个标签页里。 */
 const SEAT_COOKIE_PREFIX = 'hdm_seat'
+/** 客户端同时用请求头带 token：不依赖 cookie 是否被浏览器/宿主保留。 */
+const SEAT_HEADER = 'x-holdem-seat'
 
 function seatCookieName(roomId: string): string {
   return `${SEAT_COOKIE_PREFIX}_${roomId}`
 }
 
-function seatTokens(cookies: Record<string, string>): string[] {
-  return Object.entries(cookies)
+function seatTokens(req: IncomingMessage, cookies: Record<string, string>): string[] {
+  const fromHeader = (header(req, SEAT_HEADER) ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value !== '')
+  const fromCookies = Object.entries(cookies)
     .filter(([name]) => name.startsWith(SEAT_COOKIE_PREFIX))
     .map(([, value]) => value)
     .filter((value) => value !== '')
+  return [...new Set([...fromHeader, ...fromCookies])]
 }
 
-function sessionOf(manager: RoomManager, cookies: Record<string, string>, roomId?: string) {
-  const sessions = manager.sessionsForTokens(seatTokens(cookies))
+function sessionOf(manager: RoomManager, tokens: string[], roomId?: string) {
+  const sessions = manager.sessionsForTokens(tokens)
   if (roomId) return sessions.find((session) => session.roomId === roomId)
   return sessions[0]
 }
 
-export function registerHoldemHttp(server: WebServer, manager: RoomManager): () => void {
+/** 开房就自动起隧道：房间一创建邀请链接就该是公网地址。 */
+function startTunnelIfNeeded(manager: RoomManager, tunnel?: TunnelLike): void {
+  if (!tunnel || !manager.getConfig().autoTunnel) return
+  if (manager.getConfig().publicBaseUrl !== '') return
+  void tunnel.start().then((status) => {
+    const next = status as { state: string; url: string }
+    if (next.state === 'on' && next.url) manager.setPublicBaseUrl(next.url)
+  })
+}
+
+/** 临时诊断日志：把每个请求的结果写到 ~/.dsh/holdem-p2p/debug.jsonl */
+function trace(req: IncomingMessage, res: ServerResponse): void {
+  const started = Date.now()
+  res.on('finish', () => {
+    try {
+      const cookies = Object.keys(parseCookies(req))
+      const line = JSON.stringify({
+        at: new Date().toISOString(),
+        ms: Date.now() - started,
+        method: req.method,
+        url: req.url,
+        status: res.statusCode,
+        origin: req.headers.origin ?? null,
+        host: req.headers.host ?? null,
+        fetchSite: req.headers['sec-fetch-site'] ?? null,
+        cookieNames: cookies,
+      })
+      const dir = join(homedir(), '.dsh', 'holdem-p2p')
+      mkdirSync(dir, { recursive: true })
+      appendFileSync(join(dir, 'debug.jsonl'), line + '\n')
+    } catch {
+      // 诊断日志失败不影响主流程
+    }
+  })
+}
+
+export interface TunnelLike {
+  getStatus(): { state: string; url: string; target: string; error: string }
+  start(): Promise<unknown>
+  stop(): void
+}
+
+/** role=auto 是默认：有空位就入座，满员自动转观战。 */
+function playRole(value: string | null): 'auto' | 'sit' | 'watch' {
+  return value === 'watch' ? 'watch' : value === 'sit' ? 'sit' : 'auto'
+}
+
+export function registerHoldemHttp(server: WebServer, manager: RoomManager, tunnel?: TunnelLike): () => void {
   const prefix = manager.getConfig().routePrefix
   return server.register({
     kind: 'prefix',
     path: prefix,
     handler: (req, res) => {
-      void handle(req, res, manager, prefix)
+      trace(req, res)
+      void handle(req, res, manager, prefix, tunnel)
     },
   })
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomManager, prefix: string): Promise<void> {
+async function handle(
+  req: IncomingMessage,
+  res: ServerResponse,
+  manager: RoomManager,
+  prefix: string,
+  tunnel?: TunnelLike,
+): Promise<void> {
   try {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     const path = url.pathname
     const cookies = parseCookies(req)
 
+    if (req.method === 'GET' && path === `${prefix}/play`) {
+      html(res, playPageHtml({
+        prefix,
+        code: String(url.searchParams.get('code') ?? ''),
+        invite: String(url.searchParams.get('invite') ?? ''),
+        role: playRole(url.searchParams.get('role')),
+        name: String(url.searchParams.get('name') ?? ''),
+      }))
+      return
+    }
+
     if (req.method === 'GET' && (path === prefix || path === `${prefix}/` || path === `${prefix}/join`)) {
-      const role = url.searchParams.get('role') === 'watch' ? 'watch' : 'sit'
+      const role = playRole(url.searchParams.get('role'))
       html(res, joinPageHtml({
         prefix,
         code: String(url.searchParams.get('code') ?? ''),
@@ -72,16 +148,46 @@ async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomMa
       return
     }
 
+    if (path === `${prefix}/api/tunnel`) {
+      if (!tunnel) {
+        json(res, 200, { state: 'off', url: '', target: '', error: 'not-supported' })
+        return
+      }
+      if (req.method === 'POST') {
+        assertOrigin(req, manager.getConfig().publicBaseUrl)
+        assertMutatingHeaders(req)
+        if (!isLoopbackHost(header(req, 'host'), req.socket.remoteAddress)) throw auth('只能在本机开启公网分享')
+        const action = url.searchParams.get('action') === 'stop' ? 'stop' : 'start'
+        if (action === 'stop') {
+          tunnel.stop()
+          manager.setPublicBaseUrl('')
+        } else {
+          void tunnel.start().then((status) => {
+            const next = status as { state: string; url: string }
+            if (next.state === 'on' && next.url) manager.setPublicBaseUrl(next.url)
+            else manager.setPublicBaseUrl('')
+          })
+        }
+        json(res, 200, tunnel.getStatus())
+        return
+      }
+      json(res, 200, tunnel.getStatus())
+      return
+    }
+
     if (req.method === 'GET' && path === `${prefix}/api/session`) {
-      const session = sessionOf(manager, cookies)
+      const wanted = url.searchParams.get('roomId') ?? ''
+      const tokens = seatTokens(req, cookies)
+      const session = (wanted ? sessionOf(manager, tokens, wanted) : undefined) ?? sessionOf(manager, tokens)
+      const seatCookieCount = tokens.length
       if (!session) {
-        json(res, 200, { inRoom: false })
+        json(res, 200, { inRoom: false, seatCookies: seatCookieCount })
         return
       }
       try {
         json(res, 200, { inRoom: true, roomId: session.roomId, view: manager.view(session.roomId, session.playerId) })
       } catch {
-        json(res, 200, { inRoom: false })
+        json(res, 200, { inRoom: false, seatCookies: seatCookieCount })
       }
       return
     }
@@ -92,6 +198,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomMa
       const local = isLoopbackHost(header(req, 'host'), req.socket.remoteAddress)
       if (!local) throw auth('只能在运行 Harness 的本机开房')
       const body = await readJson<{ title?: string; blindLevel?: string; displayName?: string; browserId?: string }>(req)
+      startTunnelIfNeeded(manager, tunnel)
       const created = manager.createRoom({
         title: body.title,
         blindLevel: body.blindLevel,
@@ -102,10 +209,10 @@ async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomMa
         roomId: created.roomId,
         roomCode: created.roomCode,
         hostPlayerId: created.hostPlayerId,
-        sitUrl: created.sitUrl,
-        watchUrl: created.watchUrl,
+        joinUrl: created.joinUrl,
         shareable: created.shareable,
         wsTicket: created.wsTicket,
+        sessionToken: created.sessionToken,
         view: created.view,
       }, [seatCookie(manager, created.sessionToken, created.roomId)])
       return
@@ -118,7 +225,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomMa
         role: url.searchParams.get('role') === 'watch' ? 'watch' : 'sit',
         local: isLoopbackHost(header(req, 'host'), req.socket.remoteAddress),
         browserId: url.searchParams.get('browser') ?? undefined,
-        cookies: seatTokens(cookies),
+        cookies: seatTokens(req, cookies),
       })
       json(res, 200, preview)
       return
@@ -141,13 +248,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomMa
         displayName: String(body.displayName ?? ''),
         local: isLoopbackHost(header(req, 'host'), req.socket.remoteAddress),
         browserId: body.browserId,
-        cookies: seatTokens(cookies),
+        cookies: seatTokens(req, cookies),
       })
       json(res, 200, {
         playerId: joined.playerId,
         roomId: joined.roomId,
         seat: joined.seat,
         wsTicket: joined.wsTicket,
+        sessionToken: joined.sessionToken,
         view: joined.view,
       }, [seatCookie(manager, joined.sessionToken, joined.roomId)])
       return
@@ -157,7 +265,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomMa
       assertOrigin(req, manager.getConfig().publicBaseUrl)
       assertMutatingHeaders(req)
       const body = await readJson<{ roomId?: string }>(req).catch(() => ({}) as { roomId?: string })
-      const session = sessionOf(manager, cookies, body.roomId) ?? sessionOf(manager, cookies)
+      const tokens = seatTokens(req, cookies)
+      const session = sessionOf(manager, tokens, body.roomId) ?? sessionOf(manager, tokens)
       if (session) {
         manager.leave(session.playerId)
         json(res, 200, { ok: true }, [clearSeatCookie(manager, session.roomId)])
@@ -171,7 +280,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomMa
       assertOrigin(req, manager.getConfig().publicBaseUrl)
       assertMutatingHeaders(req)
       const body = await readJson<{ roomId?: string }>(req).catch(() => ({}) as { roomId?: string })
-      const session = sessionOf(manager, cookies, body.roomId) ?? sessionOf(manager, cookies)
+      const tokens = seatTokens(req, cookies)
+      const session = sessionOf(manager, tokens, body.roomId) ?? sessionOf(manager, tokens)
       if (!session) throw auth('还没进房间')
       json(res, 200, { wsTicket: manager.issueTicket(session.playerId, session.roomId) })
       return
@@ -181,7 +291,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, manager: RoomMa
     if (roomMatch) {
       const action = roomMatch[2]
       const roomId = asRoomId(decodeURIComponent(roomMatch[1] ?? ''))
-      const session = sessionOf(manager, cookies, roomId)
+      const session = sessionOf(manager, seatTokens(req, cookies), roomId)
       if (!session) throw auth('不在这个房间里')
       if (req.method === 'GET' && (!action || action === 'state')) {
         const view = manager.view(roomId, session.playerId)

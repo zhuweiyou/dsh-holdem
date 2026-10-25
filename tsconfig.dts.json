@@ -7,5 +7,5 @@
     "emitDeclarationOnly": true,
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "types/shims/*.ts", "types/css-modules.d.ts"]
+  "include": ["src", "types/shims/*.ts", "types/css-modules.d.ts", "types/build.d.ts"]
 }

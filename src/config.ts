@@ -13,6 +13,8 @@ export interface PluginConfig {
   enabled?: boolean
   /** 对外可访问的 origin（如 Cloudflare Tunnel）；空则只有本机可加入。 */
   publicBaseUrl?: string
+  /** 启动时自动开一条 cloudflared 临时隧道，把牌桌分享到公网。 */
+  autoTunnel?: boolean
   defaultBlindLevel?: string
   /** 每个行动时限，秒。 */
   turnTimeoutSec?: number
@@ -29,6 +31,7 @@ export interface PluginConfig {
 export const Config = z.object({
   enabled: z.boolean().default(true),
   publicBaseUrl: z.string().default(''),
+  autoTunnel: z.boolean().default(true),
   defaultBlindLevel: z.string().default('25/50'),
   turnTimeoutSec: z.number().default(30).min(15).max(90),
   autoAdvanceSec: z.number().default(6).min(2).max(30),
@@ -42,6 +45,7 @@ export const Config = z.object({
 export interface ResolvedConfig {
   enabled: boolean
   publicBaseUrl: string
+  autoTunnel: boolean
   blindLevel: BlindLevelId
   sb: number
   bb: number
@@ -89,6 +93,7 @@ export function resolveConfig(config: PluginConfig): ResolvedConfig {
   return {
     enabled: config.enabled !== false,
     publicBaseUrl: validatePublicBaseUrl(config.publicBaseUrl ?? ''),
+    autoTunnel: config.autoTunnel === true,
     blindLevel: blinds.id,
     sb: blinds.sb,
     bb: blinds.bb,

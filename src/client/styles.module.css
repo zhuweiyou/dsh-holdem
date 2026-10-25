@@ -106,6 +106,20 @@
   color: var(--dsw-alias-label-secondary, #93a0b1);
 }
 
+.hintLink {
+  color: var(--dsw-alias-brand-primary, #141414);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.buildTag {
+  margin: 10px 0 0;
+  font-size: 10.5px;
+  text-align: center;
+  color: var(--dsw-alias-label-secondary, #93a0b1);
+  opacity: 0.75;
+}
+
 .hint {
   margin: 4px 0 0;
   font-size: 11.5px;
@@ -849,8 +863,32 @@
 .seatCards {
   display: flex;
   align-items: center;
-  gap: 3px;
-  min-height: 0;
+  justify-content: center;
+  gap: 4px;
+  min-height: 54px;
+}
+
+.kickBtn {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--dsw-alias-state-error-primary, #d64545);
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary, #d64545);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kickBtn:hover {
+  background: var(--dsw-alias-state-error-primary, #d64545);
+  color: #fff;
 }
 
 .betChip {
@@ -874,49 +912,54 @@
 
 /* ------------------------------------------------------------ 牌面 */
 
+/* 方案 A：左上角点数 + 中央大花色，三档尺寸共用同一套比例 */
 .card {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  vertical-align: middle;
-  border-radius: 6px;
-  background: #f6f3ea;
-  border: 1px solid rgba(0, 0, 0, 0.22);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+  display: block;
   flex: none;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-weight: 700;
+  align-self: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #fcfbf7;
+  border: 1px solid #e2e0d7;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), 0 3px 8px rgba(0, 0, 0, 0.12);
+  color: #16171a;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   user-select: none;
 }
 
 .card_sm {
-  width: 30px;
-  height: 42px;
-  font-size: 15px;
-  border-radius: 5px;
+  width: 38px;
+  height: 54px;
+  border-radius: 6px;
+  --card-rank: 13px;
+  --card-suit: 19px;
 }
 
 .card_md {
-  width: 42px;
-  height: 60px;
-  font-size: 22px;
+  width: 50px;
+  height: 70px;
+  --card-rank: 16px;
+  --card-suit: 27px;
 }
 
 .card_lg {
-  width: 54px;
-  height: 76px;
-  font-size: 28px;
+  width: 62px;
+  height: 87px;
+  border-radius: 9px;
+  --card-rank: 21px;
+  --card-suit: 35px;
 }
 
 .cardRed {
-  color: #c0392b;
+  color: #d81b3c;
 }
 
 .cardBlack {
-  color: #1b1b1b;
+  color: #16171a;
 }
 
 .cardDim {
@@ -924,26 +967,34 @@
 }
 
 .cardRank {
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  font-size: var(--card-rank, 16px);
   line-height: 1;
 }
 
-/* 点数和花色上下叠放，字号按卡片尺寸放大，内容不要显得比牌面小一圈 */
 .cardSuit {
-  font-size: 0.82em;
+  position: absolute;
+  left: 50%;
+  top: 60%;
+  transform: translate(-50%, -50%);
+  font-size: var(--card-suit, 27px);
   line-height: 1;
-  margin-top: -1px;
 }
 
+/* 点阵牌背（方案 A 的配套） */
 .cardBack {
   background:
-    repeating-linear-gradient(45deg, #2f6f5c 0 4px, #275c4d 4px 8px);
-  border-color: rgba(0, 0, 0, 0.3);
-  box-shadow: inset 0 0 0 3px #f6f3ea;
+    radial-gradient(circle at 50% 50%, #2f6f5c 0 2.5px, transparent 2.6px) 0 0 / 9px 9px,
+    #f6f3ea;
+  border-color: #d9d6cb;
+  box-shadow: inset 0 0 0 3px #f6f3ea, 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
 .cardSlot {
   background: transparent;
-  border: 1px dashed var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.32));
+  border: 1px dashed rgba(255, 255, 255, 0.32);
   box-shadow: none;
 }
 
@@ -1504,4 +1555,160 @@
   .settleRow > :nth-child(7) {
     display: none;
   }
+}
+
+/* ------------------------------------------------------------ 邀请面板 */
+
+.inviteBtn {
+  border-color: transparent;
+  background: var(--dsw-alias-brand-primary, #2f9c76);
+  color: var(--dsw-alias-bg-base, #fff);
+  font-weight: 700;
+  padding: 5px 11px;
+}
+
+.localTag {
+  border: 1px solid var(--dsw-alias-state-warn-primary, #b7791f);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-state-warn-primary, #b7791f);
+  font: inherit;
+  font-size: 10.5px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.sheetBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.sheet {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.5));
+  background: var(--dsw-alias-bg-overlay, #1b1b1c);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.sheetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheetTitle {
+  margin: 0;
+  font-size: 15px;
+}
+
+.inviteWarn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--dsw-alias-state-warn-primary, #b7791f);
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary, #b7791f) 9%, transparent);
+}
+
+.inviteWarnTitle {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dsw-alias-state-warn-primary, #b7791f);
+}
+
+.inviteWarnText {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-secondary, #93a0b1);
+}
+
+.cmdBlock {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.12));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.urlRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.urlLabel {
+  flex: none;
+  width: 60px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary, #93a0b1);
+}
+
+.urlText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.28));
+  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.12));
+  color: var(--dsw-alias-label-primary, #e9ecf2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inviteOk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--dsw-alias-state-success-primary, #1f9d63);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #1f9d63) 9%, transparent);
+  font-size: 12.5px;
+  color: var(--dsw-alias-state-success-primary, #1f9d63);
+}
+
+.inviteError {
+  color: var(--dsw-alias-state-error-primary, #d64545);
+  font-size: 11.5px;
+}
+
+.codeLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.2));
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary, #93a0b1);
 }
