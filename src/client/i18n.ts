@@ -43,6 +43,7 @@ const ZH: Record<string, string> = {
   'lobby.linkOnly': '邀请链接',
   'lobby.linkOnlyPlaceholder': '粘贴房主发来的邀请链接',
   'lobby.needLink': '粘贴房主发来的邀请链接（只认链接，没有房号）',
+  'lobby.joinFailed': '加入失败（{where}）：{message}',
   'lobby.linkHint': '链接里已经带着这桌在哪儿（本机 / 局域网 / Cloudflare），所以不用填房号。',
   'lobby.enter': '进入牌桌',
   'lobby.preview': '查看房间',

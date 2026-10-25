@@ -118,7 +118,9 @@ export function Lobby() {
       )
       clearDeepLink()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('error.generic'))
+      const where = parsed.base === '' ? (typeof location === 'undefined' ? '本机' : location.host) : new URL(parsed.base).host
+      const message = reason instanceof Error ? reason.message : t('error.generic')
+      setError(t('lobby.joinFailed', { where, message }))
     }
   }
 
