@@ -28,6 +28,14 @@ dsh plugin --profile web add @zhuweiyou/dsh-holdem
 
 两版装完都刷新页面，「德州扑克」图标会出现在侧栏面板栏里。
 
+## 界面
+
+![大厅](docs/screenshots/lobby.png)
+
+![牌桌](docs/screenshots/table.png)
+
+![本场结算](docs/screenshots/settlement.png)
+
 ## 怎么玩
 
 1. 点侧栏的德州扑克图标 → 选「开桌位置」→ 填昵称、房间名、盲注 → 开一桌。
@@ -74,11 +82,3 @@ dsh plugin --profile web add @zhuweiyou/dsh-holdem
 - 牌桌状态在内存里：重启 dsh（本机模式）或 Durable Object 被回收（Cloudflare 模式）后房间消失。
 - 筹码是娱乐分，没有真实价值，也没有跨房间钱包。
 - 观战席位默认 16，可用 `maxSpectators` 调整；房间上限见设置。
-
-## 界面
-
-![大厅](docs/screenshots/lobby.png)
-
-![牌桌](docs/screenshots/table.png)
-
-![本场结算](docs/screenshots/settlement.png)
