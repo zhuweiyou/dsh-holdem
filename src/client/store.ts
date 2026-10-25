@@ -378,8 +378,9 @@ export async function joinRoom(input: {
   invite?: string | undefined
   displayName: string
   role: 'sit' | 'watch'
-}): Promise<void> {
+}, base = ''): Promise<void> {
   set({ busy: true })
+  if (base !== '') useBackend(base)
   try {
     const joined = await api.join({ ...input, browserId: browserId() })
     rememberRoom(joined.view.room.roomId)
@@ -389,6 +390,7 @@ export async function joinRoom(input: {
     connectChannel(joined.view.room.roomId, joined.wsTicket)
   } catch (error) {
     set({ busy: false })
+    if (base !== '') useBackend('')
     toast(errorText(error), 'error')
     throw error
   }

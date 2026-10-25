@@ -1,37 +1,35 @@
-import { useEffect, useState } from 'react'
-import type { RoomPreview } from '../types.ts'
+import { useState } from 'react'
 import { BLIND_LEVELS } from '../invariant.ts'
-import { ApiError, api } from './api.ts'
 import { t } from './i18n.ts'
 import { createRoom, joinRoom, useClientState } from './store.ts'
 import { HOSTING_OPTIONS, hostingOption } from './backends.ts'
-import { browserId, clearDeepLink, parseDeepLink, rememberName, rememberedName } from './presence.ts'
+import { CloudflarePanel } from './CloudflarePanel.tsx'
+import { clearDeepLink, parseDeepLink, rememberName, rememberedName } from './presence.ts'
 import { cx, formatChips } from './ui.ts'
 import css from './styles.module.css'
 
 const NPM_URL = 'https://www.npmjs.com/package/dsh-holdem-p2p'
 
-interface JoinInput {
+interface JoinLink {
+  /** 请求要打到哪个 origin（'' = 当前 DSH 进程） */
+  base: string
   code: string
   invite: string
-  link: string | null
-  sameHost: boolean
 }
 
-/** 加入输入框同时吃「邀请链接」和「6 位房号」。 */
-function parseJoinInput(text: string, fallbackInvite: string): JoinInput {
+/** 加入只认邀请链接：里面带着房号、邀请 token，以及这桌跑在哪台机器/Worker 上。 */
+function parseJoinLink(text: string): JoinLink | null {
   const trimmed = text.trim()
-  if (/^https?:\/\//i.test(trimmed)) {
-    try {
-      const url = new URL(trimmed)
-      const code = (url.searchParams.get('code') ?? '').replace(/\D/g, '').slice(0, 6)
-      const sameHost = typeof location !== 'undefined' && url.host === location.host
-      return { code, invite: url.searchParams.get('invite') ?? fallbackInvite, link: trimmed, sameHost }
-    } catch {
-      // 不是合法 URL 就按房号处理
-    }
+  if (!/^https?:\/\//i.test(trimmed)) return null
+  try {
+    const url = new URL(trimmed)
+    const code = (url.searchParams.get('code') ?? '').replace(/\D/g, '').slice(0, 6)
+    if (code.length !== 6) return null
+    const sameOrigin = typeof location !== 'undefined' && url.origin === location.origin
+    return { base: sameOrigin ? '' : url.origin, code, invite: url.searchParams.get('invite') ?? '' }
+  } catch {
+    return null
   }
-  return { code: trimmed.replace(/\D/g, '').slice(0, 6), invite: fallbackInvite, link: null, sameHost: true }
 }
 
 function readPref(key: string, fallback: string): string {
@@ -66,28 +64,16 @@ export function Lobby() {
   const [name, setName] = useState(() => rememberedName())
   const [title, setTitle] = useState('')
   const [blindLevel, setBlindLevel] = useState<string>('25/50')
-  const [hosting, setHosting] = useState<string>(() => readPref('hosting', 'local'))
+  const [hosting, setHosting] = useState<string>(() => readPref('hosting', 'cloudflare'))
   const [workerUrl, setWorkerUrl] = useState<string>(() => readPref('worker-url', ''))
-  const [joinText, setJoinText] = useState(deepLink?.code ?? '')
-  const [invite, setInvite] = useState(deepLink?.invite ?? '')
-  const [preview, setPreview] = useState<RoomPreview | null>(null)
+  const [joinText, setJoinText] = useState(() => {
+    if (!deepLink) return ''
+    const query = new URLSearchParams({ code: deepLink.code, role: 'auto' })
+    if (deepLink.invite) query.set('invite', deepLink.invite)
+    const origin = typeof location === 'undefined' ? '' : location.origin
+    return `${origin}/holdem-p2p/play?${query.toString()}`
+  })
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!deepLink) return
-    let cancelled = false
-    void api
-      .preview({ code: deepLink.code, invite: deepLink.invite, role: deepLink.role, browserId: browserId() })
-      .then((result) => {
-        if (!cancelled) setPreview(result)
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : t('error.generic'))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const submitCreate = async (): Promise<void> => {
     setError(null)
@@ -97,12 +83,11 @@ export function Lobby() {
     }
     rememberName(name.trim())
     const option = hostingOption(hosting)
-    if (option.needsUrl && workerUrl.trim() === '') {
-      setError(t('host.needWorkerUrl'))
+    if (hosting === 'cloudflare' && workerUrl.trim() === '') {
+      setError(t('host.needCloudflare'))
       return
     }
     writePref('hosting', hosting)
-    if (option.needsUrl) writePref('worker-url', workerUrl.trim())
     try {
       await createRoom(
         { title: title.trim() || undefined, blindLevel, displayName: name.trim() },
@@ -113,56 +98,28 @@ export function Lobby() {
     }
   }
 
-  const submitPreview = async (): Promise<void> => {
-    setError(null)
-    const parsed = parseJoinInput(joinText, invite)
-    if (parsed.code.length !== 6) {
-      setError(t('lobby.needCodeOrLink'))
-      return
-    }
-    setInvite(parsed.invite)
-    try {
-      // 先按「这张桌就在本机」查：链接和房号都走这条，能在面板里玩就直接玩
-      const result = await api.preview({ code: parsed.code, invite: parsed.invite || undefined, browserId: browserId() })
-      setPreview(result)
-    } catch (reason) {
-      setPreview(null)
-      if (openElsewhere(reason, parsed.link)) return
-      setError(reason instanceof ApiError ? reason.message : t('error.generic'))
-    }
-  }
-
+  /** 加入只用邀请链接：链接里带着房号、邀请 token 和「在哪儿」（本机 / 局域网 / Cloudflare）。 */
   const submitJoin = async (role: 'sit' | 'watch'): Promise<void> => {
     setError(null)
     if (!name.trim()) {
       setError(t('lobby.needName'))
       return
     }
-    const parsed = parseJoinInput(joinText, invite)
-    if (parsed.code.length !== 6) {
-      setError(t('lobby.needCodeOrLink'))
+    const parsed = parseJoinLink(joinText)
+    if (!parsed) {
+      setError(t('lobby.needLink'))
       return
     }
     rememberName(name.trim())
     try {
-      await joinRoom({ roomCode: parsed.code, invite: parsed.invite || undefined, displayName: name.trim(), role })
+      await joinRoom(
+        { roomCode: parsed.code, invite: parsed.invite, displayName: name.trim(), role },
+        parsed.base,
+      )
       clearDeepLink()
     } catch (reason) {
-      if (openElsewhere(reason, parsed.link)) return
       setError(reason instanceof Error ? reason.message : t('error.generic'))
     }
-  }
-
-  /**
-   * 本机找不到这张桌（链接是别人机器上的）时，退回网页版：直接开它的 /play。
-   * 本机能找到桌的话就在 DSH 面板里玩。
-   */
-  const openElsewhere = (reason: unknown, link: string | null): boolean => {
-    const remote = reason instanceof ApiError && (reason.code === 'room-not-found' || reason.code === 'expired' || reason.status === 404)
-    if (!remote || !link) return false
-    window.open(link, '_blank', 'noopener')
-    setError(t('lobby.linkOpened'))
-    return true
   }
 
   return (
@@ -241,14 +198,7 @@ export function Lobby() {
                 ))}
               </div>
               <p className={css.hint}>{hostingOption(hosting).hint()}</p>
-              {hostingOption(hosting).needsUrl ? (
-                <input
-                  className={css.input}
-                  value={workerUrl}
-                  placeholder={hostingOption(hosting).urlPlaceholder?.() ?? ''}
-                  onChange={(event) => setWorkerUrl(event.target.value)}
-                />
-              ) : null}
+              {hosting === 'cloudflare' ? <CloudflarePanel onWorkerUrl={setWorkerUrl} /> : null}
             </div>
             <button type="button" className={cx(css.btn, css.btnPrimary, css.btnWide)} disabled={state.busy} onClick={() => void submitCreate()}>
               {t('lobby.createAction')}
@@ -259,62 +209,23 @@ export function Lobby() {
           <>
             {deepLink ? <div className={css.inviteBanner}>{t('lobby.invited', { code: deepLink.code })}</div> : null}
             <label className={css.field}>
-              <span className={css.fieldLabel}>{t('lobby.codeOrLink')}</span>
+              <span className={css.fieldLabel}>{t('lobby.linkOnly')}</span>
               <input
-                className={cx(css.input, /^\s*https?:/i.test(joinText) ? undefined : css.inputCode)}
+                className={css.input}
                 value={joinText}
-                placeholder={t('lobby.codeOrLinkPlaceholder')}
-                onChange={(event) => {
-                  setJoinText(event.target.value)
-                  setPreview(null)
-                }}
+                placeholder={t('lobby.linkOnlyPlaceholder')}
+                onChange={(event) => setJoinText(event.target.value)}
               />
             </label>
-            <button type="button" className={cx(css.btn, css.btnOutline, css.btnWide)} disabled={state.busy} onClick={() => void submitPreview()}>
-              {t('lobby.preview')}
+            <button
+              type="button"
+              className={cx(css.btn, css.btnPrimary, css.btnWide)}
+              disabled={state.busy}
+              onClick={() => void submitJoin('sit')}
+            >
+              {t('lobby.enter')}
             </button>
-
-            {preview ? (
-              <div className={css.previewCard}>
-                <div className={css.previewHead}>
-                  <strong>{preview.title}</strong>
-                  <span className={css.previewMeta}>
-                    {t('lobby.seated', { n: preview.seated })} · {t(`lobby.phase.${preview.phase === 'hand' ? 'hand' : 'lobby'}`)}
-                  </span>
-                </div>
-                <div className={css.previewMeta}>
-                  {preview.settings.blindLevel} · {t('common.spectators', { n: preview.spectators })}
-                </div>
-                <div className={css.previewSeats}>
-                  {preview.seats.map((seat) => (
-                    <span key={seat.seat} className={cx(css.previewSeat, seat.displayName ? css.previewSeatFilled : undefined)}>
-                      {seat.displayName ?? '—'}
-                      {seat.host ? ' ★' : ''}
-                    </span>
-                  ))}
-                </div>
-                {preview.alreadyInRoom ? (
-                  <button type="button" className={cx(css.btn, css.btnPrimary, css.btnWide)} disabled={state.busy} onClick={() => void submitJoin('sit')}>
-                    {t('lobby.backToRoom')}
-                  </button>
-                ) : (
-                  <div className={css.previewActions}>
-                    <button
-                      type="button"
-                      className={cx(css.btn, css.btnPrimary)}
-                      disabled={state.busy}
-                      onClick={() => void submitJoin('sit')}
-                    >
-                      {t('lobby.enter')}
-                    </button>
-                    <button type="button" className={cx(css.btn, css.btnGhost)} disabled={state.busy} onClick={() => void submitJoin('watch')}>
-                      {t('lobby.watchOnly')}
-                    </button>
-                  </div>
-                )}
-                {!preview.canSit && !preview.alreadyInRoom ? <p className={css.hint}>{t('lobby.full')}</p> : null}
-              </div>
-            ) : null}
+            <p className={css.hint}>{t('lobby.linkHint')}</p>
           </>
         )}
       </div>

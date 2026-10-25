@@ -7,7 +7,7 @@ import { SeatPod } from './SeatPod.tsx'
 import { SideRail } from './SideRail.tsx'
 import { t } from './i18n.ts'
 import { consumeAutoInvite, leaveRoom, runCommand, useClientState } from './store.ts'
-import { copyText, cx, formatChips, signedChips } from './ui.ts'
+import { cx, formatChips, signedChips } from './ui.ts'
 import css from './styles.module.css'
 
 export function Table({ view }: { view: PlayerView }) {
@@ -39,11 +39,6 @@ export function Table({ view }: { view: PlayerView }) {
     consumeAutoInvite()
   }, [state.autoInvite])
 
-  const copyCode = async (): Promise<void> => {
-    const ok = await copyText(room.roomCode)
-    if (ok) setCopied(true)
-  }
-
   const act = (action: TableAction): void => {
     void runCommand({ type: 'action', action })
   }
@@ -57,10 +52,6 @@ export function Table({ view }: { view: PlayerView }) {
         <div className={css.headerMain}>
           <div className={css.titleRow}>
             <h1 className={css.roomTitle}>{room.title}</h1>
-            <button type="button" className={css.codeChip} onClick={() => void copyCode()} title={t('table.copyCode')}>
-              {t('table.room', { code: room.roomCode })}
-              {copied ? <span className={css.copiedTag}>{t('common.copied')}</span> : null}
-            </button>
             <button type="button" className={cx(css.btn, css.inviteBtn)} onClick={() => setInviteOpen(true)}>
               {t('table.invite')}
             </button>

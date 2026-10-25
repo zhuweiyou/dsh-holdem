@@ -62,8 +62,11 @@ dsh plugin --profile desktop add /绝对路径/dsh-holdem-p2p
 
 | 方案 | 说明 |
 | --- | --- |
+| **公网 · Cloudflare**（默认） | 牌桌跑在 Cloudflare Worker + Durable Object 上，**关掉你的电脑也能玩**。点「授权 Cloudflare」→ 浏览器授权 → 一键部署，地址自动拿到 |
 | **本机** | 牌桌跑在你自己的 dsh 里；同一 Wi-Fi 用局域网链接，公网链接取决于隧道 |
-| **Cloudflare** | 牌桌跑在 Cloudflare Worker + Durable Object 上，**关掉你的电脑也能玩**；填一次部署好的 Worker 地址 |
+
+加入牌桌**只认邀请链接**：链接里带着房号、邀请 token，以及这桌在哪（本机 / 局域网 / Cloudflare），
+所以没有「填房号加入」这回事——把链接发过去就行。
 
 ### 部署自己的 Cloudflare 牌桌（一次性）
 

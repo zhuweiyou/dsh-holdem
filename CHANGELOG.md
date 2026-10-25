@@ -34,3 +34,6 @@
 - 开桌位置抽象（`backends.ts`）：建房表单可在「本机 / Cloudflare」之间选择，后续方案加一条即可
 - 新增 Cloudflare Worker + Durable Object 版服务端（复用规则引擎与房间状态机，带 CORS），`pnpm worker:deploy` 一键部署
 - 渲染层与 API 支持切换后端（请求基址、WS 地址、token 都跟着走）
+- 开桌表单默认「公网 · Cloudflare」：内置 wrangler 授权（`wrangler login`，可复制 OAuth 链接）与一键部署，自动记住云端地址、可换账号重授权
+- 加入牌桌改为只认邀请链接（链接自带房号/邀请 token/所在后端），取消「填房号加入」
+- 插件 HTTP 路由支持跨源（本机 / 私有网段 origin），面板可直接连局域网或 Cloudflare 房间

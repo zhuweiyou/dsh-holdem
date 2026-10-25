@@ -3,6 +3,7 @@ import { Config, resolveConfig, type PluginConfig } from './config.ts'
 import { PACKAGE_NAME } from './invariant.ts'
 import { registerHoldemHttp } from './net/routes.ts'
 import { registerHoldemSocket } from './net/ws.ts'
+import { CloudflareDeployer } from './net/cloudflare.ts'
 import { startLanProxy, type LanProxy } from './net/lan-proxy.ts'
 import { firstLanIPv4 } from './net/network.ts'
 import { QuickTunnel } from './net/tunnel.ts'
@@ -34,6 +35,8 @@ export function apply(ctx: Context, config: PluginConfig): void {
     ctx.logger?.info?.(message)
   })
 
+  const cloudflare = new CloudflareDeployer()
+
   ctx.effect(() => {
     let lanProxy: LanProxy | null = null
     void startLanProxy({
@@ -46,7 +49,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
     })
 
     const stopTick = manager.start()
-    const disposeHttp = registerHoldemHttp(ctx.webServer, manager, tunnel)
+    const disposeHttp = registerHoldemHttp(ctx.webServer, manager, tunnel, cloudflare)
     const disposeWs = registerHoldemSocket(ctx.webServer, manager)
     return () => {
       stopTick()
@@ -54,6 +57,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
       disposeWs()
       lanProxy?.dispose()
       tunnel.stop()
+      cloudflare.dispose()
       void manager.dispose()
     }
   }, 'holdem-p2p: room routes')

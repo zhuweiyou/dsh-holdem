@@ -6,7 +6,16 @@ import type { WebServer } from '@deepseek-ai/cordis'
 import { type ClientCommand } from '../types.ts'
 import { asRoomId } from '../types.ts'
 import type { RoomManager } from '../room/RoomManager.ts'
-import { assertMutatingHeaders, assertOrigin, cookieHeader, header, isLoopbackHost, parseCookies } from './auth.ts'
+import {
+  assertMutatingHeaders,
+  assertOrigin,
+  cookieHeader,
+  header,
+  isLoopbackHost,
+  isLoopbackOrigin,
+  isPrivateOrigin,
+  parseCookies,
+} from './auth.ts'
 import { encodeJson, readJson } from './json.ts'
 import { joinPageHtml } from './join-page.ts'
 import { playPageHtml } from './play-page.ts'
@@ -74,6 +83,13 @@ function trace(req: IncomingMessage, res: ServerResponse): void {
   })
 }
 
+export interface CloudflareLike {
+  getStatus(): unknown
+  startLogin(): unknown
+  startDeploy(): unknown
+  logout(): unknown
+}
+
 export interface TunnelLike {
   getStatus(): { state: string; url: string; target: string; error: string }
   start(): Promise<unknown>
@@ -85,14 +101,34 @@ function playRole(value: string | null): 'auto' | 'sit' | 'watch' {
   return value === 'watch' ? 'watch' : value === 'sit' ? 'sit' : 'auto'
 }
 
-export function registerHoldemHttp(server: WebServer, manager: RoomManager, tunnel?: TunnelLike): () => void {
+export function registerHoldemHttp(
+  server: WebServer,
+  manager: RoomManager,
+  tunnel?: TunnelLike,
+  cloudflare?: CloudflareLike,
+): () => void {
   const prefix = manager.getConfig().routePrefix
   return server.register({
     kind: 'prefix',
     path: prefix,
     handler: (req, res) => {
       trace(req, res)
-      void handle(req, res, manager, prefix, tunnel)
+      // 面板可以从本机或局域网另一个 origin 调过来（例如加入云端/别人机器的房间）
+      const origin = header(req, 'origin')
+      const allow = origin !== undefined && (isLoopbackOrigin(origin) || isPrivateOrigin(origin))
+      if (allow) {
+        res.setHeader('access-control-allow-origin', origin)
+        res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS')
+        res.setHeader('access-control-allow-headers', 'content-type,x-requested-with,x-holdem-seat')
+        res.setHeader('access-control-max-age', '600')
+        res.setHeader('vary', 'Origin')
+      }
+      if (req.method === 'OPTIONS') {
+        res.writeHead(allow ? 204 : 403)
+        res.end()
+        return
+      }
+      void handle(req, res, manager, prefix, tunnel, cloudflare)
     },
   })
 }
@@ -103,6 +139,7 @@ async function handle(
   manager: RoomManager,
   prefix: string,
   tunnel?: TunnelLike,
+  cloudflare?: CloudflareLike,
 ): Promise<void> {
   try {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
@@ -145,6 +182,26 @@ async function handle(
     if (req.method === 'GET' && path === `${prefix}/api/health`) {
       if (!isLoopbackHost(header(req, 'host'), req.socket.remoteAddress)) throw auth('仅本机可查看健康状态')
       json(res, 200, manager.health())
+      return
+    }
+
+    if (path === `${prefix}/api/cloudflare`) {
+      if (!cloudflare) {
+        json(res, 200, { authorized: false, account: '', workerUrl: '', pending: false, deploying: false, authorizeUrl: '', error: 'not-supported', log: '' })
+        return
+      }
+      if (req.method === 'POST') {
+        assertOrigin(req, manager.getConfig().publicBaseUrl)
+        assertMutatingHeaders(req)
+        if (!isLoopbackHost(header(req, 'host'), req.socket.remoteAddress)) throw auth('只能在本机操作 Cloudflare 授权')
+        const action = url.searchParams.get('action') ?? ''
+        if (action === 'login') json(res, 200, cloudflare.startLogin())
+        else if (action === 'deploy') json(res, 200, cloudflare.startDeploy())
+        else if (action === 'logout') json(res, 200, cloudflare.logout())
+        else json(res, 400, { error: 'illegal', message: '未知操作' })
+        return
+      }
+      json(res, 200, cloudflare.getStatus())
       return
     }
 

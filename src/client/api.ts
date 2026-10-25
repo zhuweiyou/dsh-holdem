@@ -77,6 +77,17 @@ export interface JoinResponse {
   view: PlayerView
 }
 
+export interface CloudflareStatus {
+  authorized: boolean
+  account: string
+  workerUrl: string
+  pending: boolean
+  deploying: boolean
+  authorizeUrl: string
+  error: string
+  log: string
+}
+
 export interface TunnelStatus {
   state: 'off' | 'starting' | 'on' | 'error'
   url: string
@@ -139,6 +150,12 @@ export const api = {
   },
   history(roomId: string) {
     return request<{ summary: SessionSummary | null }>(`/api/rooms/${encodeURIComponent(roomId)}/history`)
+  },
+  cloudflare() {
+    return request<CloudflareStatus>('/api/cloudflare')
+  },
+  cloudflareAction(action: 'login' | 'deploy' | 'logout') {
+    return request<CloudflareStatus>(`/api/cloudflare?action=${action}`, { method: 'POST', body: '{}' })
   },
   tunnel() {
     return request<TunnelStatus>('/api/tunnel')

@@ -11,7 +11,7 @@ import css from './styles.module.css'
  */
 export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () => void }) {
   const room = view.room
-  const [copied, setCopied] = useState<'sit' | 'lan' | 'code' | null>(null)
+  const [copied, setCopied] = useState<'sit' | 'lan' | null>(null)
   const [tunnel, setTunnel] = useState<TunnelStatus | null>(null)
   const [pending, setPending] = useState(false)
   const [failure, setFailure] = useState('')
@@ -67,7 +67,7 @@ export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () =
     }
   }
 
-  const copy = async (kind: 'sit' | 'lan' | 'code', text: string): Promise<void> => {
+  const copy = async (kind: 'sit' | 'lan', text: string): Promise<void> => {
     if (!(await copyText(text))) return
     setCopied(kind)
     setTimeout(() => setCopied((current) => (current === kind ? null : current)), 1600)
@@ -156,12 +156,6 @@ export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () =
           </div>
         ) : null}
 
-        <div className={css.codeLine}>
-          <span>{t('invite.codeHint', { code: room.roomCode })}</span>
-          <button type="button" className={cx(css.btn, css.btnChip)} onClick={() => void copy('code', room.roomCode)}>
-            {copied === 'code' ? t('invite.copied') : t('invite.copyCode')}
-          </button>
-        </div>
       </div>
     </div>
   )

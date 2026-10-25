@@ -25,11 +25,10 @@ export const HOSTING_OPTIONS: HostingOption[] = [
     resolveBase: () => '',
   },
   {
-    id: 'worker',
-    label: () => t('host.worker'),
-    hint: () => t('host.workerHint'),
-    needsUrl: true,
-    urlPlaceholder: () => t('host.workerPlaceholder'),
+    id: 'cloudflare',
+    label: () => t('host.cloudflare'),
+    hint: () => t('host.cloudflareHint'),
+    needsUrl: false,
     resolveBase: (context) => context.url.trim().replace(/\/+$/, ''),
   },
 ]
