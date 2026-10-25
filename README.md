@@ -14,14 +14,23 @@ DeepSeek Harness 的德州扑克面板插件：6 人无限注德州，超员自�
 
 ## 安装
 
+### Desktop 版
+
+在 DSH 桌面端的插件安装入口里**直接填写插件名称** `@zhuweiyou/dsh-holdem` 即可。
+
+### Web 版
+
 ```sh
-dsh plugin --profile desktop add @zhuweiyou/dsh-holdem
+dsh plugin --profile web add @zhuweiyou/dsh-holdem
 ```
 
-装完刷新页面，「德州扑克」图标会出现在侧栏面板栏里。
+包内已包含编译产物（`lib/`），装完即用，不需要再构建。升级同样是再执行一次 `add`。
 
-> 公网模式需要本机有 `wrangler`（插件已作为依赖带上，无需全局安装）；第一次授权会打开浏览器，
-> 也可以复制面板里给出的授权链接手动打开。
+两版装完都刷新页面，「德州扑克」图标会出现在侧栏面板栏里。
+
+> 公网牌桌要在**宿主机器**上跑 `wrangler`（插件已作为依赖带上，无需全局安装）；第一次授权会打开浏览器，
+> 也可以复制面板里给出的授权链接手动打开——Web 版宿主没有浏览器时就走这条。
+> 只用本机 / 局域网牌桌不需要 Cloudflare。
 
 ## 怎么玩
 
