@@ -1708,17 +1708,6 @@
   filter: brightness(1.08);
 }
 
-.localTag {
-  border: 1px solid var(--dsw-alias-state-warn-primary, #b7791f);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--dsw-alias-state-warn-primary, #b7791f);
-  font: inherit;
-  font-size: 10.5px;
-  padding: 1px 8px;
-  cursor: pointer;
-}
-
 .sheetBackdrop {
   position: absolute;
   inset: 0;

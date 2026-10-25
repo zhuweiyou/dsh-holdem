@@ -16,7 +16,6 @@ function setup(options: { turnTimeoutSec?: number; autoAdvanceSec?: number } = {
   const clock = new FakeClock()
   const manager = new RoomManager({
     config: resolveConfig({
-      publicBaseUrl: '',
       defaultBlindLevel: '25/50',
       turnTimeoutSec: options.turnTimeoutSec ?? 30,
       autoAdvanceSec: options.autoAdvanceSec ?? 2,

@@ -16,7 +16,7 @@ let manager: RoomManager
 
 beforeAll(async () => {
   manager = new RoomManager({
-    config: resolveConfig({ publicBaseUrl: '', autoTunnel: false, defaultBlindLevel: '25/50' }),
+    config: resolveConfig({ defaultBlindLevel: '25/50' }),
     origin: () => `http://127.0.0.1:${targetPort}`,
     now: Date.now,
     store: noopStore,
@@ -102,7 +102,7 @@ describe('局域网小代理', () => {
     expect(body.sessionToken.length).toBeGreaterThan(10)
   })
 
-  it('局域网来源不算本机：建房 / 开隧道这类操作会被挡住', () => {
+  it('局域网来源不算本机：建房 / 部署 Cloudflare 这类操作会被挡住', () => {
     // 代理会保留原始 Host，所以服务端看到的是局域网地址，不是 127.0.0.1
     expect(isLoopbackHost('192.168.0.103:64670', '192.168.0.103')).toBe(false)
     expect(isLoopbackHost('127.0.0.1:64670', '127.0.0.1')).toBe(true)

@@ -42,7 +42,7 @@ let prefix = '/holdem'
 
 beforeAll(async () => {
   manager = new RoomManager({
-    config: resolveConfig({ publicBaseUrl: '', autoTunnel: false, defaultBlindLevel: '25/50', autoAdvanceSec: 2 }),
+    config: resolveConfig({ defaultBlindLevel: '25/50', autoAdvanceSec: 2 }),
     origin: () => 'http://127.0.0.1:0',
     now: Date.now,
     store: noopStore,

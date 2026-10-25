@@ -65,7 +65,6 @@ function room(phase: RoomView['phase'], overrides: Partial<RoomView> = {}): Room
     createdAt: new Date('2026-10-25T10:00:00Z').toISOString(),
     nextHandAt: phase === 'handOver' ? new Date(Date.now() + 4000).toISOString() : null,
     seq: 42,
-    shareable: true,
     joinUrl: 'http://127.0.0.1:49923/holdem/play?code=123456&invite=t&role=auto',
     lanUrl: '',
     ...overrides,
