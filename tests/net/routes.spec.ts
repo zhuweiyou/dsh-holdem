@@ -12,6 +12,31 @@ interface Jar {
 
 let server: Server
 let base = ''
+const stubCloudflare = {
+  pending: false,
+  value: { authorized: true, account: 'me@example.com', workerUrl: 'https://demo.workers.dev', pending: false, deploying: false, authorizeUrl: '', error: '', log: '' },
+  getStatus() {
+    return { ...this.value, pending: this.pending }
+  },
+  startLogin() {
+    this.pending = true
+    this.value = { ...this.value, authorizeUrl: 'https://dash.cloudflare.com/oauth2/auth?x=1' }
+    return this.getStatus()
+  },
+  startDeploy() {
+    return this.getStatus()
+  },
+  cancelLogin() {
+    this.pending = false
+    this.value = { ...this.value, authorizeUrl: '' }
+    return this.getStatus()
+  },
+  logout() {
+    this.value = { ...this.value, authorized: false, account: '' }
+    return this.getStatus()
+  },
+}
+
 let manager: RoomManager
 const stubTunnel = {
   value: { state: 'off' as string, url: '', target: 'http://127.0.0.1:0', error: '' },
@@ -52,7 +77,7 @@ beforeAll(async () => {
       return () => undefined
     },
   }
-  registerHoldemHttp(fake, manager, stubTunnel)
+  registerHoldemHttp(fake, manager, stubTunnel, stubCloudflare)
   server = createServer((req, res) => {
     const route = routes.find((entry) => (req.url ?? '').startsWith(entry.path))
     if (!route) {
@@ -300,6 +325,36 @@ describe('HTTP 路由', () => {
     expect(stopped.body.state).toBe('off')
     const after = await call<{ view: { room: { shareable: boolean } } }>(`${prefix}/api/session`, { jar })
     expect(after.body.view.room.shareable).toBe(false)
+  })
+
+  it('Cloudflare 授权：能开始、能取消、能换账号', async () => {
+    const jar: Jar = {}
+    const status = await call<{ authorized: boolean; workerUrl: string }>(`${prefix}/api/cloudflare`, { jar })
+    expect(status.body.authorized).toBe(true)
+    expect(status.body.workerUrl).toContain('workers.dev')
+
+    const started = await call<{ pending: boolean; authorizeUrl: string }>(`${prefix}/api/cloudflare?action=login`, {
+      method: 'POST',
+      body: {},
+      jar,
+    })
+    expect(started.body.pending).toBe(true)
+    expect(started.body.authorizeUrl).toContain('dash.cloudflare.com/oauth2/auth')
+
+    const cancelled = await call<{ pending: boolean; authorizeUrl: string }>(`${prefix}/api/cloudflare?action=cancel`, {
+      method: 'POST',
+      body: {},
+      jar,
+    })
+    expect(cancelled.body.pending).toBe(false)
+    expect(cancelled.body.authorizeUrl).toBe('')
+
+    const loggedOut = await call<{ authorized: boolean }>(`${prefix}/api/cloudflare?action=logout`, {
+      method: 'POST',
+      body: {},
+      jar,
+    })
+    expect(loggedOut.body.authorized).toBe(false)
   })
 
   it('动作接口校验 baseSeq 并回传最新视图', async () => {

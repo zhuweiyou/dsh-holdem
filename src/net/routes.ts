@@ -87,6 +87,7 @@ export interface CloudflareLike {
   getStatus(): unknown
   startLogin(): unknown
   startDeploy(): unknown
+  cancelLogin(): unknown
   logout(): unknown
 }
 
@@ -197,6 +198,7 @@ async function handle(
         const action = url.searchParams.get('action') ?? ''
         if (action === 'login') json(res, 200, cloudflare.startLogin())
         else if (action === 'deploy') json(res, 200, cloudflare.startDeploy())
+        else if (action === 'cancel') json(res, 200, cloudflare.cancelLogin())
         else if (action === 'logout') json(res, 200, cloudflare.logout())
         else json(res, 400, { error: 'illegal', message: '未知操作' })
         return

@@ -55,6 +55,19 @@ function packageRoot(): string {
   return resolve(dirname(new URL(import.meta.url).pathname), '..', '..')
 }
 
+function wranglerCredentialFiles(): string[] {
+  const home = homedir()
+  return [
+    join(home, 'Library', 'Preferences', '.wrangler', 'config', 'default.toml'),
+    join(home, '.config', '.wrangler', 'config', 'default.toml'),
+    join(home, '.wrangler', 'config', 'default.toml'),
+  ]
+}
+
+function hasWranglerCredentials(): boolean {
+  return wranglerCredentialFiles().some((file) => existsSync(file))
+}
+
 function wranglerBinary(): string {
   const root = packageRoot()
   const local = join(root, 'node_modules', '.bin', 'wrangler')
@@ -97,13 +110,23 @@ export class CloudflareDeployer {
     if (now - this.checkedAt < 60_000) return
     this.checkedAt = now
     try {
-      const result = spawnSync(wranglerBinary(), ['whoami'], { encoding: 'utf8', timeout: 8000 })
+      const result = spawnSync(wranglerBinary(), ['whoami'], { encoding: 'utf8', timeout: 12_000 })
       const output = stripAnsi(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
-      this.authorized = result.status === 0 && /associated with the email|@/.test(output) && !/not logged in|You are not authenticated/i.test(output)
-      const account = /associated with the email\s+([^\s.]+(?:\.[^\s.]+)*)/i.exec(output)?.[1]
-      if (account) this.stored = { ...this.stored, account }
+      const notLoggedIn = /not logged in|You are not authenticated/i.test(output)
+      if (notLoggedIn) {
+        this.authorized = false
+        return
+      }
+      const email = /associated with the email\s+([^\s.]+(?:\.[^\s.]+)*)/i.exec(output)?.[1]
+      if (email) {
+        this.authorized = true
+        this.stored = { ...this.stored, account: email }
+        return
+      }
+      // whoami 超时或输出不认识：凭据文件在就当已授权，别让界面误报
+      this.authorized = result.status === 0 || hasWranglerCredentials()
     } catch {
-      this.authorized = false
+      this.authorized = hasWranglerCredentials()
     }
   }
 
@@ -134,6 +157,20 @@ export class CloudflareDeployer {
       })
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error)
+    }
+    return this.getStatus()
+  }
+
+  /** 等待浏览器回调时用户点了取消：直接杀掉 wrangler 进程。 */
+  cancelLogin(): CloudflareStatus {
+    const child = this.login
+    this.login = null
+    this.authorizeUrl = ''
+    this.checkedAt = 0
+    try {
+      child?.kill()
+    } catch {
+      // 忽略
     }
     return this.getStatus()
   }

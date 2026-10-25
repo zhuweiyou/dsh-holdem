@@ -45,7 +45,7 @@ export function CloudflarePanel({ onWorkerUrl }: CloudflarePanelProps) {
     }
   }, [onWorkerUrl])
 
-  const act = async (action: 'login' | 'deploy' | 'logout'): Promise<void> => {
+  const act = async (action: 'login' | 'deploy' | 'cancel' | 'logout'): Promise<void> => {
     setFailure('')
     setBusy(true)
     try {
@@ -93,9 +93,16 @@ export function CloudflarePanel({ onWorkerUrl }: CloudflarePanelProps) {
               {t('cf.switchAccount')}
             </button>
           </>
+        ) : status?.pending ? (
+          <>
+            <span className={css.cfWaiting}>{t('cf.waiting')}</span>
+            <button type="button" className={cx(css.btn, css.btnChip)} disabled={busy} onClick={() => void act('cancel')}>
+              {t('cf.cancel')}
+            </button>
+          </>
         ) : (
-          <button type="button" className={cx(css.btn, css.btnPrimary)} disabled={busy || status?.pending} onClick={() => void act('login')}>
-            {status?.pending ? t('cf.waiting') : t('cf.authorize')}
+          <button type="button" className={cx(css.btn, css.btnPrimary)} disabled={busy} onClick={() => void act('login')}>
+            {t('cf.authorize')}
           </button>
         )}
       </div>

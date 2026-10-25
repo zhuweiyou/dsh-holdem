@@ -154,7 +154,7 @@ export const api = {
   cloudflare() {
     return request<CloudflareStatus>('/api/cloudflare')
   },
-  cloudflareAction(action: 'login' | 'deploy' | 'logout') {
+  cloudflareAction(action: 'login' | 'deploy' | 'cancel' | 'logout') {
     return request<CloudflareStatus>(`/api/cloudflare?action=${action}`, { method: 'POST', body: '{}' })
   },
   tunnel() {

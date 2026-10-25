@@ -160,6 +160,11 @@
   color: var(--dsw-alias-state-warn-primary, #b7791f);
 }
 
+.cfWaiting {
+  font-size: 11.5px;
+  color: var(--dsw-alias-state-warn-primary, #b7791f);
+}
+
 .cfLabel {
   font-size: 11.5px;
   color: var(--dsw-alias-label-secondary, #93a0b1);
