@@ -1,0 +1,15 @@
+# Cloudflare Worker + Durable Object：把牌桌服务端搬到云端，不再依赖本机 dsh。
+# 部署：pnpm worker:deploy（第一次会要求 wrangler login 或提供 CLOUDFLARE_API_TOKEN）
+name = "dsh-holdem"
+main = "lib/worker.js"
+compatibility_date = "2025-10-01"
+
+[durable_objects]
+bindings = [{ name = "ROOMS", class_name = "RoomsDurableObject" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomsDurableObject"]
+
+[observability]
+enabled = true

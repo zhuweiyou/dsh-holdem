@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+  workerd: true
+  sharp: true
+
+# Single-package repo. Root is always a workspace member.

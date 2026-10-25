@@ -1,0 +1,20 @@
+node_modules
+lib
+*.tgz
+.DS_Store
+OTP.md
+
+# 本地开发产物：wrangler dev 的 miniflare 状态（SQLite + WAL/SHM、日志 trace）
+# 里面有本机请求记录与房间快照，不该进仓库
+.wrangler/
+
+# 环境变量与密钥：Cloudflare token、调试变量等一律不提交
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+
+# 临时/覆盖率产物
+*.log
+coverage
+.vitest

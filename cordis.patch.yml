@@ -1,0 +1,6 @@
+# @zhuweiyou/dsh-holdem — 德州扑克牌桌。
+# 插入一条 Host 插件行：注册 /holdem 路由、WebSocket 与房间管理；
+# 同一包的 Web Client 半边注册侧栏面板与牌桌。
+- insert:
+    - id: dsh-holdem
+      name: "@zhuweiyou/dsh-holdem"
