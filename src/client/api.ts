@@ -39,9 +39,9 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${apiBase}${PREFIX}${path}`, {
-    credentials: apiBase === '' ? 'same-origin' : 'omit',
+async function request<T>(path: string, init: RequestInit = {}, base: string = apiBase): Promise<T> {
+  const response = await fetch(`${base}${PREFIX}${path}`, {
+    credentials: base === '' ? 'same-origin' : 'omit',
     ...init,
     headers: {
       ...HEADERS,
@@ -55,6 +55,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(body.error ?? `http-${response.status}`, body.message ?? response.statusText, response.status, body.view)
   }
   return body
+}
+
+/**
+ * 本机特权请求：Cloudflare 授权/部署跑在 dsh 进程里，只认回环地址。
+ * 当前会话可能指向 Worker（创建过公网房间后 apiBase 不是 ''），所以这里强制打到本机。
+ */
+function localRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return request<T>(path, init, '')
 }
 
 export interface CreateRoomResponse {
@@ -144,10 +152,10 @@ export const api = {
     return request<{ summary: SessionSummary | null }>(`/api/rooms/${encodeURIComponent(roomId)}/history`)
   },
   cloudflare() {
-    return request<CloudflareStatus>('/api/cloudflare')
+    return localRequest<CloudflareStatus>('/api/cloudflare')
   },
   cloudflareAction(action: 'login' | 'deploy' | 'cancel' | 'logout') {
-    return request<CloudflareStatus>(`/api/cloudflare?action=${action}`, { method: 'POST', body: '{}' })
+    return localRequest<CloudflareStatus>(`/api/cloudflare?action=${action}`, { method: 'POST', body: '{}' })
   },
 }
 

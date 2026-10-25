@@ -256,11 +256,13 @@ function handleEvent(event: ServerEvent): void {
   }
   if (event.type === 'kicked') {
     closeChannel()
+    useBackend('')
     set({ view: null, notice: t('error.kicked'), connection: 'idle' })
     return
   }
   if (event.type === 'left') {
     closeChannel()
+    useBackend('')
     set({ view: null, notice: event.reason, connection: 'idle' })
     return
   }
@@ -311,6 +313,7 @@ async function recoverSession(roomId: string): Promise<void> {
   }
   rememberRoom(null)
   closeChannel()
+  useBackend('')
   const noCookie = session !== null && !session.inRoom && (session.seatCookies ?? 1) === 0
   set({ view: null, connection: 'idle', notice: noCookie ? t('error.noSeatCookie') : t('error.roomGone') })
 }
@@ -334,6 +337,9 @@ export async function bootstrap(): Promise<void> {
         set({ connection: 'polling' })
         startPolling(session.view.room.roomId)
       }
+    } else {
+      // 没在房间里就别继续指着远端：大厅的授权面板、入座都要回到本机
+      useBackend('')
     }
   } catch {
     // 没有会话时保持大厅
@@ -404,6 +410,7 @@ export async function leaveRoom(): Promise<void> {
   }
   rememberRoom(null)
   closeChannel()
+  useBackend('')
   set({ view: null, connection: 'idle', notice: null })
   toast(t('toast.left'))
 }

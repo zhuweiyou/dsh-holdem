@@ -1,6 +1,6 @@
 {
   "name": "@zhuweiyou/dsh-holdem",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "德州扑克：6 人桌、超员自动观战、多局排行榜；牌桌可跑在本机或 Cloudflare Worker 上。",
   "keywords": [
     "deepseek-harness",
@@ -57,6 +57,7 @@
     "typecheck": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run",
     "verify": "pnpm typecheck && pnpm build && pnpm test",
+    "prepublishOnly": "pnpm verify",
     "worker:dev": "pnpm worker:build && wrangler dev --port 8787",
     "worker:deploy": "pnpm worker:build && wrangler deploy",
     "worker:typecheck": "tsc -p worker/tsconfig.json --noEmit",
