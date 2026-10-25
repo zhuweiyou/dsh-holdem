@@ -14,6 +14,18 @@ export function isLoopbackHost(hostHeader: string | undefined, remoteAddress: st
   return LOOPBACK_HOSTS.has(host ?? '') || LOOPBACK_REMOTES.has(remote)
 }
 
+/** 私有网段（局域网直连）也放行：同 Wi-Fi 的朋友用 http://192.168.x.x:端口 进来。 */
+export function isPrivateOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname
+    return host.startsWith('10.')
+      || host.startsWith('192.168.')
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  } catch {
+    return false
+  }
+}
+
 export function isLoopbackOrigin(origin: string): boolean {
   try {
     const url = new URL(origin)
@@ -46,6 +58,7 @@ export function requestOrigin(req: IncomingMessage): string | null {
 export function originAllowed(origin: string | null, publicBaseUrl: string, browser: boolean): boolean {
   if (!origin) return !browser
   if (isLoopbackOrigin(origin)) return true
+  if (isPrivateOrigin(origin)) return true
   if (publicBaseUrl !== '' && origin === publicBaseUrl) return true
   return false
 }

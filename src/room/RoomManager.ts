@@ -16,6 +16,7 @@ import type {
   SessionSummary,
   TableAction,
 } from '../types.ts'
+import { firstLanIPv4 } from '../net/network.ts'
 import { CommandError, asPlayerId, asRoomId, asSessionId, nowIso } from '../types.ts'
 import {
   MAX_CHAT_LINES,
@@ -204,6 +205,13 @@ export class RoomManager {
   }
 
   /** 内置隧道拿到地址后，运行时把对外地址换掉（影响邀请链接与 shareable）。 */
+  private lanPort = 0
+
+  /** 局域网小代理的端口（0 表示没起来）。 */
+  setLanPort(port: number): void {
+    this.lanPort = port > 0 ? port : 0
+  }
+
   setPublicBaseUrl(url: string): void {
     this.config.publicBaseUrl = url.trim() === '' ? '' : validatePublicBaseUrl(url)
   }
@@ -849,6 +857,14 @@ export class RoomManager {
     else this.publish(room)
   }
 
+  /** 同一局域网可直连的邀请链接；需要局域网代理在跑、而且拿得到网卡地址。 */
+  private lanJoinUrl(room: LiveRoom): string {
+    if (this.lanPort <= 0) return ''
+    const ip = firstLanIPv4()
+    if (!ip) return ''
+    return `http://${ip}:${this.lanPort}${this.config.routePrefix}/play?code=${room.roomCode}&invite=${encodeURIComponent(room.sitToken)}&role=auto`
+  }
+
   // ---------------------------------------------------------------- 内部：视图
 
   private project(room: LiveRoom, playerId: PlayerId): PlayerView {
@@ -919,6 +935,7 @@ export class RoomManager {
       seq: room.seq,
       shareable: this.config.publicBaseUrl !== '',
       joinUrl: `${this.config.publicBaseUrl || this.origin()}${this.config.routePrefix}/play?code=${room.roomCode}&invite=${encodeURIComponent(room.sitToken)}&role=auto`,
+      lanUrl: this.lanJoinUrl(room),
     }
 
     const leaderboard: LeaderboardEntry[] = [...room.stats.entries()]

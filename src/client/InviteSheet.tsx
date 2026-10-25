@@ -11,7 +11,7 @@ import css from './styles.module.css'
  */
 export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () => void }) {
   const room = view.room
-  const [copied, setCopied] = useState<'sit' | 'watch' | 'code' | null>(null)
+  const [copied, setCopied] = useState<'sit' | 'lan' | 'code' | null>(null)
   const [tunnel, setTunnel] = useState<TunnelStatus | null>(null)
   const [pending, setPending] = useState(false)
   const [failure, setFailure] = useState('')
@@ -67,7 +67,7 @@ export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () =
     }
   }
 
-  const copy = async (kind: 'sit' | 'watch' | 'code', text: string): Promise<void> => {
+  const copy = async (kind: 'sit' | 'lan' | 'code', text: string): Promise<void> => {
     if (!(await copyText(text))) return
     setCopied(kind)
     setTimeout(() => setCopied((current) => (current === kind ? null : current)), 1600)
@@ -142,7 +142,19 @@ export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () =
           </div>
         ))}
 
-        <p className={css.sheetNote}>{t('invite.ephemeral')}</p>
+        <p className={css.sheetNote}>{t('invite.linkHint')} {t('invite.ephemeral')}</p>
+
+        {room.lanUrl && hostOf(room.lanUrl) !== hostOf(room.joinUrl) ? (
+          <div className={css.urlRow}>
+            <span className={css.urlLabel}>{t('invite.lan')}</span>
+            <code className={css.urlText} title={room.lanUrl}>
+              {room.lanUrl}
+            </code>
+            <button type="button" className={cx(css.btn, css.btnChip)} onClick={() => void copy('lan', room.lanUrl)}>
+              {copied === 'lan' ? t('invite.copied') : t('invite.copy')}
+            </button>
+          </div>
+        ) : null}
 
         <div className={css.codeLine}>
           <span>{t('invite.codeHint', { code: room.roomCode })}</span>

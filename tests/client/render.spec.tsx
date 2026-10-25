@@ -67,6 +67,7 @@ function room(phase: RoomView['phase'], overrides: Partial<RoomView> = {}): Room
     seq: 42,
     shareable: true,
     joinUrl: 'http://127.0.0.1:49923/holdem-p2p/play?code=123456&invite=t&role=auto',
+    lanUrl: '',
     ...overrides,
   }
 }

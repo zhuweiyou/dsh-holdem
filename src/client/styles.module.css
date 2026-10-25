@@ -78,9 +78,22 @@
   color: var(--dsw-alias-label-secondary, #93a0b1);
 }
 
+.btn.btnGhost:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.1));
+  color: var(--dsw-alias-label-primary, #e9ecf2);
+}
+
 .btnDanger {
   background: transparent;
   border-color: var(--dsw-alias-state-error-primary, #e06c75);
+  color: var(--dsw-alias-state-error-primary, #e06c75);
+}
+
+/* hover 时保住红描边，别被通用 .btn:hover 刷成灰边/透明 */
+.btn.btnDanger:hover:not(:disabled) {
+  border-color: var(--dsw-alias-state-error-primary, #e06c75);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary, #e06c75) 10%, transparent);
   color: var(--dsw-alias-state-error-primary, #e06c75);
 }
 
@@ -1102,6 +1115,14 @@
   color: var(--dsw-alias-bg-base, #06130f);
   font-weight: 700;
   white-space: nowrap;
+}
+
+/* 和主按钮一样：hover 时保住主色背景与反色文字 */
+.btn.btnRaise:hover:not(:disabled) {
+  background: var(--dsw-alias-brand-primary, #2f9c76);
+  border-color: transparent;
+  color: var(--dsw-alias-bg-base, #06130f);
+  filter: brightness(1.08);
 }
 
 .raiseGroup {

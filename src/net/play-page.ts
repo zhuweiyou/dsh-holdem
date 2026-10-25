@@ -178,8 +178,8 @@ export function playPageHtml(options: PlayPageOptions): string {
     <p class="hint" id="joinHint" style="margin:0"></p>
     <input type="text" id="nameInput" placeholder="你的昵称" maxlength="16" />
     <div class="row">
-      <button class="primary" id="joinSit" type="button">入座</button>
-      <button id="joinWatch" type="button">观战</button>
+      <button class="primary" id="joinSit" type="button">进入牌桌</button>
+      <button id="joinWatch" type="button">只看不打</button>
     </div>
   </div>
 </div>

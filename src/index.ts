@@ -3,6 +3,7 @@ import { Config, resolveConfig, type PluginConfig } from './config.ts'
 import { PACKAGE_NAME } from './invariant.ts'
 import { registerHoldemHttp } from './net/routes.ts'
 import { registerHoldemSocket } from './net/ws.ts'
+import { startLanProxy, type LanProxy } from './net/lan-proxy.ts'
 import { QuickTunnel } from './net/tunnel.ts'
 import { createFileStore } from './persist/store.ts'
 import { RoomManager } from './room/RoomManager.ts'
@@ -32,6 +33,16 @@ export function apply(ctx: Context, config: PluginConfig): void {
   })
 
   ctx.effect(() => {
+    let lanProxy: LanProxy | null = null
+    void startLanProxy({
+      targetPort: ctx.webServer.port,
+      prefix: resolved.routePrefix,
+      log: (message) => ctx.logger?.info?.(message),
+    }).then((started) => {
+      lanProxy = started
+      if (started) manager.setLanPort(started.port)
+    })
+
     const stopTick = manager.start()
     const disposeHttp = registerHoldemHttp(ctx.webServer, manager, tunnel)
     const disposeWs = registerHoldemSocket(ctx.webServer, manager)
@@ -44,6 +55,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
       stopTick()
       disposeHttp()
       disposeWs()
+      lanProxy?.dispose()
       tunnel.stop()
       void manager.dispose()
     }

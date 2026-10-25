@@ -135,6 +135,8 @@ export interface RoomView {
   shareable: boolean
   /** 一条链接搞定：有空位就入座，没空位自动转观战。 */
   joinUrl: string
+  /** 同一个局域网里可以直接用的地址（没有可用网卡时为空）。 */
+  lanUrl: string
 }
 
 export interface YouView {
