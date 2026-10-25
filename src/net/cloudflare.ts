@@ -50,9 +50,19 @@ function writeStored(next: StoredState): void {
   writeFileSync(file, JSON.stringify(next, null, 2))
 }
 
-/** 插件根目录（lib/ 的上一级），worker 配置和 wrangler.toml 都在那里。 */
+/**
+ * 插件根目录：从当前模块位置往上找 package.json（打包后是 lib/index.js，
+ * 源码里是 src/net/cloudflare.ts，层级不一样，不能写死 .. 的层数）。
+ */
 function packageRoot(): string {
-  return resolve(dirname(new URL(import.meta.url).pathname), '..', '..')
+  let dir = dirname(new URL(import.meta.url).pathname)
+  for (let depth = 0; depth < 5; depth += 1) {
+    if (existsSync(join(dir, 'wrangler.toml'))) return dir
+    const parent = resolve(dir, '..')
+    if (parent === dir) break
+    dir = parent
+  }
+  return resolve(dirname(new URL(import.meta.url).pathname), '..')
 }
 
 function wranglerCredentialFiles(): string[] {
