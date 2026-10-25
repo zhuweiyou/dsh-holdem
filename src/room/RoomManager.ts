@@ -21,7 +21,6 @@ import {
   MAX_CHAT_LINES,
   MAX_HISTORY_HANDS,
   MAX_SEATS,
-  MAX_SPECTATORS,
   CHAT_COOLDOWN_MS,
   HAND_OVER_MIN_MS,
   PRESENCE_TTL_MS,
@@ -272,6 +271,7 @@ export class RoomManager {
         turnTimeoutMs: this.config.turnTimeoutMs,
         autoAdvanceMs: this.config.autoAdvanceMs,
         allowSpectators: this.config.allowSpectators,
+        maxSpectators: this.config.maxSpectators,
         chatEnabled: this.config.chatEnabled,
       },
       players: new Map(),
@@ -380,9 +380,11 @@ export class RoomManager {
     const seatedCount = [...room.players.values()].filter((player) => player.seat !== null).length
     const canSit = wanted === 'sit' && invite.sit && room.phase === 'lobby' && seatedCount < MAX_SEATS
     if (!canSit) {
-      if (!room.settings.allowSpectators) throw new CommandError('room-full', '房间已满且不允许观战')
+      if (!room.settings.allowSpectators || room.settings.maxSpectators <= 0) {
+        throw new CommandError('room-full', '房间已满且不允许观战')
+      }
       const spectators = [...room.players.values()].filter((player) => player.seat === null)
-      if (spectators.length >= MAX_SPECTATORS) throw new CommandError('room-full', '观战席已满')
+      if (spectators.length >= room.settings.maxSpectators) throw new CommandError('room-full', '观战席已满')
       if (wanted === 'sit' && invite.sit === false) throw new CommandError('auth', '没有入座权限')
     }
 

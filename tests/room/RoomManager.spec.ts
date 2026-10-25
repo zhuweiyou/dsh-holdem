@@ -13,13 +13,14 @@ class FakeClock {
   }
 }
 
-function setup(options: { turnTimeoutSec?: number; autoAdvanceSec?: number } = {}) {
+function setup(options: { turnTimeoutSec?: number; autoAdvanceSec?: number; maxSpectators?: number } = {}) {
   const clock = new FakeClock()
   const manager = new RoomManager({
     config: resolveConfig({
       defaultBlindLevel: '25/50',
       turnTimeoutSec: options.turnTimeoutSec ?? 30,
       autoAdvanceSec: options.autoAdvanceSec ?? 2,
+      maxSpectators: options.maxSpectators,
       hostIdleDissolveMin: 10,
     }),
     origin: () => 'http://127.0.0.1:49923',
@@ -50,6 +51,30 @@ describe('房间与入座', () => {
     expect(spectator.seat).toBeNull()
     expect(spectator.view.you.spectator).toBe(true)
     expect(spectator.view.spectators.map((entry) => entry.displayName)).toContain('旁观')
+  })
+
+  it('观战席位受 maxSpectators 限制，0 等于不接观战', () => {
+    const { manager } = setup({ maxSpectators: 2 })
+    const host = manager.createRoom({ title: '测试桌', displayName: '房主' })
+    for (let i = 1; i < 6; i += 1) {
+      manager.join({ roomCode: host.roomCode, role: 'sit', displayName: `玩家${i}`, local: true })
+    }
+    manager.join({ roomCode: host.roomCode, role: 'watch', displayName: '观众1', local: true })
+    manager.join({ roomCode: host.roomCode, role: 'watch', displayName: '观众2', local: true })
+    expect(manager.peek({ roomCode: host.roomCode, local: true }).spectators).toBe(2)
+    expect(() =>
+      manager.join({ roomCode: host.roomCode, role: 'watch', displayName: '观众3', local: true }),
+    ).toThrow(/观战席已满/)
+
+    const closed = setup({ maxSpectators: 0 }).manager
+    const closedHost = closed.createRoom({ title: '满员桌', displayName: '房主' })
+    for (let i = 1; i < 6; i += 1) {
+      closed.join({ roomCode: closedHost.roomCode, role: 'sit', displayName: `玩家${i}`, local: true })
+    }
+    expect(closed.peek({ roomCode: closedHost.roomCode, local: true }).settings.maxSpectators).toBe(0)
+    expect(() =>
+      closed.join({ roomCode: closedHost.roomCode, role: 'watch', displayName: '观众', local: true }),
+    ).toThrow(/不允许观战/)
   })
 
   it('同一 cookie 重连复用同一玩家', () => {

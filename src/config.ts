@@ -1,9 +1,11 @@
 import z from '@deepseek-ai/schemastery'
 import {
   BLIND_LEVELS,
+  DEFAULT_MAX_SPECTATORS,
   MAX_ROOMS,
   MAX_SEATS,
   ROUTE_PREFIX,
+  SPECTATORS_LIMIT,
   type BlindLevelId,
   blindsFor,
   buyInFor,
@@ -17,6 +19,8 @@ export interface PluginConfig {
   /** 一手结束后自动开下一手的等待，秒。 */
   autoAdvanceSec?: number
   allowSpectators?: boolean
+  /** 每个房间的观战席位上限；0 等于关闭观战。 */
+  maxSpectators?: number
   chatEnabled?: boolean
   maxRooms?: number
   /** 房主失联多久后自动解散并结算，分钟。 */
@@ -30,6 +34,7 @@ export const Config = z.object({
   turnTimeoutSec: z.number().default(30).min(15).max(90),
   autoAdvanceSec: z.number().default(6).min(2).max(30),
   allowSpectators: z.boolean().default(true),
+  maxSpectators: z.number().default(DEFAULT_MAX_SPECTATORS).min(0).max(SPECTATORS_LIMIT),
   chatEnabled: z.boolean().default(true),
   maxRooms: z.number().default(MAX_ROOMS).min(1).max(64),
   hostIdleDissolveMin: z.number().default(10).min(1).max(120),
@@ -45,6 +50,8 @@ export interface ResolvedConfig {
   turnTimeoutMs: number
   autoAdvanceMs: number
   allowSpectators: boolean
+  /** 观战席位上限；0 表示这桌不接观战。 */
+  maxSpectators: number
   chatEnabled: boolean
   maxRooms: number
   hostIdleDissolveMs: number
@@ -73,6 +80,7 @@ export function resolveConfig(config: PluginConfig): ResolvedConfig {
     turnTimeoutMs: turnTimeoutSec * 1000,
     autoAdvanceMs: autoAdvanceSec * 1000,
     allowSpectators: config.allowSpectators !== false,
+    maxSpectators: clamp(Math.trunc(config.maxSpectators ?? DEFAULT_MAX_SPECTATORS), 0, SPECTATORS_LIMIT),
     chatEnabled: config.chatEnabled !== false,
     maxRooms: clamp(Math.trunc(config.maxRooms ?? MAX_ROOMS), 1, 64),
     hostIdleDissolveMs: clamp(config.hostIdleDissolveMin ?? 10, 1, 120) * 60_000,

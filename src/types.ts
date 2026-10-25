@@ -19,6 +19,8 @@ export interface RoomSettingsView {
   turnTimeoutMs: number
   autoAdvanceMs: number
   allowSpectators: boolean
+  /** 观战席位上限；0 表示这桌不接观战。 */
+  maxSpectators: number
   chatEnabled: boolean
 }
 

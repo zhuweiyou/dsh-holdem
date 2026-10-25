@@ -22,6 +22,8 @@ export interface Env {
   ROOMS: DurableObjectNamespace
   /** 房间上限等可选覆盖 */
   MAX_ROOMS?: string
+  /** 观战席位上限的可选覆盖 */
+  MAX_SPECTATORS?: string
 }
 
 const CORS_HEADERS = {
@@ -103,6 +105,7 @@ export class RoomsDurableObject {
   constructor(_state: DurableObjectState, env: Env) {
     const overrides: Record<string, unknown> = {}
     if (env.MAX_ROOMS) overrides.maxRooms = Number(env.MAX_ROOMS)
+    if (env.MAX_SPECTATORS) overrides.maxSpectators = Number(env.MAX_SPECTATORS)
     const config = resolveConfig(overrides as never)
     this.manager = new RoomManager({
       config,

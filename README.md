@@ -57,6 +57,7 @@ dsh plugin --profile web add @zhuweiyou/dsh-holdem
 | `turnTimeoutSec` | 每个行动的时限（15–90 秒） | 30 |
 | `autoAdvanceSec` | 一手结束后自动开下一手（2–30 秒） | 6 |
 | `allowSpectators` | 是否允许观战 | 开 |
+| `maxSpectators` | 每桌观战席位上限（0–64，`0` 等于不接观战） | 16 |
 | `chatEnabled` | 是否允许桌边聊天 | 开 |
 | `maxRooms` | 同时存在的房间上限 | 8 |
 | `hostIdleDissolveMin` | 房主失联多久后自动结算（分钟） | 10 |
@@ -76,7 +77,7 @@ dsh plugin --profile web add @zhuweiyou/dsh-holdem
 - 房主进程天然可信（能改自己的代码），不承诺防作弊。
 - 牌桌状态在内存里：重启 dsh（本机模式）或 Durable Object 被回收（Cloudflare 模式）后房间消失。
 - 筹码是娱乐分，没有真实价值，也没有跨房间钱包。
-- 观战人数上限 16；房间上限见设置。
+- 观战席位默认 16，可用 `maxSpectators` 调整；房间上限见设置。
 
 ## 界面
 

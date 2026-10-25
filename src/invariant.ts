@@ -7,7 +7,10 @@ export const SUBPROTOCOL = 'holdem.v1'
 export const ROUTE_PREFIX = '/holdem'
 
 export const MAX_SEATS = 6
-export const MAX_SPECTATORS = 16
+/** 观战席位默认值；实际值由设置项 maxSpectators 决定。 */
+export const DEFAULT_MAX_SPECTATORS = 16
+/** 设置项 maxSpectators 能配到的最大值。 */
+export const SPECTATORS_LIMIT = 64
 export const MAX_ROOMS = 8
 export const MAX_TITLE = 24
 export const MAX_DISPLAY_NAME = 16
