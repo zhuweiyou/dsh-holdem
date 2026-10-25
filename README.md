@@ -85,10 +85,3 @@ dsh plugin --profile web add @zhuweiyou/dsh-holdem
 ![牌桌](docs/screenshots/table.png)
 
 ![本场结算](docs/screenshots/settlement.png)
-
-## 许可证
-
-MIT。规则引擎与联机骨架分别参考了
-[BubblePtr/dsh-holdem](https://github.com/BubblePtr/dsh-holdem) 和
-[lifefloating/dsh-doudizhu](https://github.com/lifefloating/dsh-doudizhu)（均为 MIT），
-详见 `LICENSE`。
