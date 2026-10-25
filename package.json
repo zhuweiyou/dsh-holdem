@@ -34,7 +34,8 @@
     "locale",
     "icon.svg",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "wrangler.toml"
   ],
   "dsh": {
     "bundle": {
@@ -51,18 +52,18 @@
   },
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "build": "pnpm run clean && node scripts/emit-dts.mjs && tsdown --config tsdown.config.ts && tsdown --config tsdown.client.ts",
+    "build": "pnpm run clean && node scripts/emit-dts.mjs && tsdown --config tsdown.config.ts && tsdown --config tsdown.client.ts && tsdown --config tsdown.worker.ts",
     "typecheck": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run",
     "verify": "pnpm typecheck && pnpm build && pnpm test",
-    "worker:dev": "wrangler dev --port 8787",
-    "worker:deploy": "wrangler deploy",
-    "worker:typecheck": "tsc -p worker/tsconfig.json --noEmit"
+    "worker:dev": "pnpm worker:build && wrangler dev --port 8787",
+    "worker:deploy": "pnpm worker:build && wrangler deploy",
+    "worker:typecheck": "tsc -p worker/tsconfig.json --noEmit",
+    "worker:build": "tsdown --config tsdown.worker.ts"
   },
   "dependencies": {
-    "cloudflared": "^0.7.3",
-    "ws": "^8.18.3",
-    "wrangler": "^4.152.0"
+    "wrangler": "^4.152.0",
+    "ws": "^8.18.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",

@@ -1,7 +1,9 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { whichSync } from './which.ts'
 
 /**
  * Cloudflare 授权 + 部署：直接驱动 wrangler（官方 CLI）。
@@ -78,11 +80,39 @@ function hasWranglerCredentials(): boolean {
   return wranglerCredentialFiles().some((file) => existsSync(file))
 }
 
-function wranglerBinary(): string {
-  const root = packageRoot()
-  const local = join(root, 'node_modules', '.bin', 'wrangler')
-  if (existsSync(local)) return local
-  return 'wrangler'
+interface WranglerCommand {
+  command: string
+  baseArgs: string[]
+}
+
+/**
+ * 找 wrangler CLI：
+ * 1. HOLDEM_WRANGLER 显式指定；
+ * 2. 用 Node 直接跑依赖里的 wrangler.js（不依赖 PATH，也不依赖 .bin 软链，
+ *    插件被装到别的 profile 里同样可用）；
+ * 3. 兜底找插件目录的 .bin，再退到 PATH。
+ */
+function wranglerCommand(): WranglerCommand {
+  const custom = process.env.HOLDEM_WRANGLER
+  if (custom) return { command: custom, baseArgs: [] }
+  try {
+    const require = createRequire(import.meta.url)
+    // wrangler 的 exports 不暴露 bin/，只能先拿到 package.json 再拼路径
+    const pkg = require.resolve('wrangler/package.json')
+    const cli = join(dirname(pkg), 'bin', 'wrangler.js')
+    if (existsSync(cli)) {
+      // 插件跑在 Electron 里时 process.execPath 是 Electron 本身，
+      // 直接拿它跑脚本会被当成 App 启动（wrangler 只会打印 help），所以优先真正的 node。
+      const node = whichSync('node')
+      if (node) return { command: node, baseArgs: [cli] }
+      if (!process.versions.electron) return { command: process.execPath, baseArgs: [cli] }
+    }
+  } catch {
+    // 继续尝试本地 .bin
+  }
+  const local = join(packageRoot(), 'node_modules', '.bin', 'wrangler')
+  if (existsSync(local)) return { command: local, baseArgs: [] }
+  return { command: 'wrangler', baseArgs: [] }
 }
 
 function stripAnsi(text: string): string {
@@ -120,7 +150,8 @@ export class CloudflareDeployer {
     if (now - this.checkedAt < 60_000) return
     this.checkedAt = now
     try {
-      const result = spawnSync(wranglerBinary(), ['whoami'], { encoding: 'utf8', timeout: 12_000 })
+      const cli = wranglerCommand()
+      const result = spawnSync(cli.command, [...cli.baseArgs, 'whoami'], { encoding: 'utf8', timeout: 12_000 })
       const output = stripAnsi(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
       const notLoggedIn = /not logged in|You are not authenticated/i.test(output)
       if (notLoggedIn) {
@@ -144,9 +175,10 @@ export class CloudflareDeployer {
     if (this.login) return this.getStatus()
     this.error = ''
     this.authorizeUrl = ''
-    this.log = ''
+    const cli = wranglerCommand()
+    this.log = `wrangler: ${[cli.command, ...cli.baseArgs].join(' ')}\n`
     try {
-      const child = spawn(wranglerBinary(), ['login'], { cwd: packageRoot(), env: process.env })
+      const child = spawn(cli.command, [...cli.baseArgs, 'login'], { cwd: packageRoot(), env: process.env })
       this.login = child
       const onData = (chunk: Buffer): void => {
         const text = stripAnsi(chunk.toString())
@@ -188,9 +220,15 @@ export class CloudflareDeployer {
   startDeploy(): CloudflareStatus {
     if (this.deploy) return this.getStatus()
     this.error = ''
-    this.log = ''
+    const cli = wranglerCommand()
+    this.log = `wrangler: ${[cli.command, ...cli.baseArgs].join(' ')}\n`
     try {
-      const child = spawn(wranglerBinary(), ['deploy'], { cwd: packageRoot(), env: process.env })
+      // 显式指定 config：当前目录往上可能有别人的 wrangler.jsonc，会被误用
+      const child = spawn(
+        cli.command,
+        [...cli.baseArgs, 'deploy', '--config', join(packageRoot(), 'wrangler.toml')],
+        { cwd: packageRoot(), env: process.env },
+      )
       this.deploy = child
       const onData = (chunk: Buffer): void => {
         const text = stripAnsi(chunk.toString())
@@ -215,7 +253,8 @@ export class CloudflareDeployer {
 
   logout(): CloudflareStatus {
     try {
-      spawnSync(wranglerBinary(), ['logout'], { encoding: 'utf8', timeout: 8000 })
+      const cli = wranglerCommand()
+      spawnSync(cli.command, [...cli.baseArgs, 'logout'], { encoding: 'utf8', timeout: 8000 })
     } catch {
       // 忽略
     }

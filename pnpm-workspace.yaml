@@ -1,5 +1,4 @@
 allowBuilds:
-  cloudflared: true
   esbuild: true
   workerd: true
   sharp: true

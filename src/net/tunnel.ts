@@ -1,7 +1,8 @@
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
-import { Tunnel, bin as packageBin, install, use } from 'cloudflared'
+import { join } from 'node:path'
+import { whichSync } from './which.ts'
 
 export type TunnelState = 'off' | 'starting' | 'on' | 'error'
 
@@ -17,10 +18,6 @@ export interface TunnelStatus {
 
 const URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i
 
-/**
- * 用一个空的 --config，别去读 ~/.cloudflared/config.yml。
- * 那份配置里通常写着别人的 named tunnel（tunnel:/ingress:），会干扰 quick tunnel 的注册与路由。
- */
 /** cloudflared 的输出写到 ~/.dsh/holdem-p2p/tunnel.log，排查隧道问题用。 */
 function tunnelLog(line: string): void {
   try {
@@ -32,11 +29,14 @@ function tunnelLog(line: string): void {
   }
 }
 
+/**
+ * 用一个空的最小 --config，别去读 ~/.cloudflared/config.yml。
+ * 那份配置里通常写着别人的 named tunnel（tunnel:/ingress:），会干扰 quick tunnel 的注册与路由。
+ */
 function isolatedConfigPath(): string {
   try {
     const dir = mkdtempSync(join(tmpdir(), 'holdem-tunnel-'))
     const file = join(dir, 'config.yml')
-    // 有效的最小配置：既有内容（避免 empty 警告），又不带任何 named tunnel
     writeFileSync(file, 'no-autoupdate: true\n')
     return file
   } catch {
@@ -44,38 +44,21 @@ function isolatedConfigPath(): string {
   }
 }
 
-function whichSync(name: string): string | undefined {
-  const exts = process.platform === 'win32' ? (process.env.PATHEXT ?? '.EXE').split(';') : ['']
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-    if (!dir) continue
-    for (const ext of exts) {
-      const candidate = join(dir, name + ext)
-      if (existsSync(candidate)) return candidate
-    }
-  }
-  return undefined
-}
-
 /**
- * 找一个可用的 cloudflared：
- * 1. HOLDEM_CLOUDFLARED_BIN 显式指定；
- * 2. PATH 里已经装好的（brew / apt / 手装）；
- * 3. npm 包自带的下载位置，没有就下载一次。
+ * 找系统里的 cloudflared：HOLDEM_CLOUDFLARED_BIN 显式指定，或 PATH 里已装好的。
+ * 不再是 npm 依赖（省掉 39MB 二进制），没装就只有局域网链接可用。
  */
-export async function resolveCloudflared(log?: (message: string) => void): Promise<string> {
+export function resolveCloudflared(): string {
   const custom = process.env.HOLDEM_CLOUDFLARED_BIN
   if (custom && existsSync(custom)) return custom
   const onPath = whichSync('cloudflared')
   if (onPath) return onPath
-  if (existsSync(packageBin)) return packageBin
-  log?.('正在下载 cloudflared 二进制…')
-  const installed = await install(packageBin)
-  return installed
+  throw new Error('没找到 cloudflared（`brew install cloudflared` 装上后公网链接才可用；局域网链接不受影响）')
 }
 
-/** 内置的临时隧道：不用登录 Cloudflare，拿一个随机 trycloudflare.com 地址。 */
+/** 临时隧道：不用登录 Cloudflare，拿一个随机 trycloudflare.com 地址。 */
 export class QuickTunnel {
-  private tunnel: Tunnel | null = null
+  private child: ChildProcessWithoutNullStreams | null = null
   private status: TunnelStatus
   private readonly log: ((message: string) => void) | undefined
   private starting: Promise<TunnelStatus> | null = null
@@ -88,6 +71,10 @@ export class QuickTunnel {
   ) {
     this.log = log
     this.status = { state: 'off', url: '', target, error: '' }
+  }
+
+  getStatus(): TunnelStatus {
+    return { ...this.status }
   }
 
   /** 起来后用本机再访问一次公网地址，只写日志（界面上不提示）。 */
@@ -104,11 +91,7 @@ export class QuickTunnel {
     this.log?.(`隧道自检未通过：${url} 从本机访问不到（不影响其它机器是否可达）`)
   }
 
-  getStatus(): TunnelStatus {
-    return { ...this.status }
-  }
-
-  /** 后台启动；重复调用复用同一次启动过程。返回的是「起步后」的状态。 */
+  /** 后台启动；重复调用复用同一次启动过程。 */
   async start(): Promise<TunnelStatus> {
     if (this.status.state === 'on') return this.getStatus()
     if (this.starting) return this.starting
@@ -124,79 +107,81 @@ export class QuickTunnel {
   private async launch(): Promise<TunnelStatus> {
     let binary: string
     try {
-      binary = await resolveCloudflared(this.log)
+      binary = resolveCloudflared()
     } catch (error) {
       return this.fail(error instanceof Error ? error.message : String(error))
     }
 
-    try {
-      use(binary)
-      // 这个包的 options 会把 key 原样拼进命令行，所以键名要自带 `--`
+    const args = [
+      'tunnel',
+      '--url',
+      this.target,
+      '--no-autoupdate',
       // http2 + 强制 IPv4：走代理/隧道时比 QUIC 稳得多
-      const configPath = isolatedConfigPath()
-      const options: Record<string, string | boolean> = {
-        '--no-autoupdate': true,
-        '--protocol': 'http2',
-        '--edge-ip-version': '4',
+      '--protocol',
+      'http2',
+      '--edge-ip-version',
+      '4',
+    ]
+    const configPath = isolatedConfigPath()
+    if (configPath) args.push('--config', configPath)
+
+    return await new Promise<TunnelStatus>((resolve) => {
+      let settled = false
+      let recent = ''
+      const finish = (status: TunnelStatus): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        this.status = status
+        if (status.state === 'on') {
+          this.log?.(`公网地址已就绪：${status.url}`)
+          void this.selfCheck(status.url)
+        }
+        resolve(status)
       }
-      if (configPath) options['--config'] = configPath
-      const tunnel = Tunnel.quick(this.target, options)
-      this.tunnel = tunnel
+      const timer = setTimeout(() => {
+        this.stop()
+        finish(this.fail(`启动 cloudflared 超时（${Math.round(this.timeoutMs / 1000)} 秒）`))
+      }, this.timeoutMs)
+      if (typeof timer === 'object' && 'unref' in timer) timer.unref()
 
-      return await new Promise<TunnelStatus>((resolve) => {
-        let settled = false
-        let recent = ''
-        const finish = (status: TunnelStatus): void => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          this.status = status
-          if (status.state === 'on') {
-            this.log?.(`公网地址已就绪：${status.url}`)
-            void this.selfCheck(status.url)
-          }
-          resolve(status)
-        }
-        const timer = setTimeout(() => {
-          this.stop()
-          finish(this.fail(`启动 cloudflared 超时（${Math.round(this.timeoutMs / 1000)} 秒）`))
-        }, this.timeoutMs)
-        if (typeof timer === 'object' && 'unref' in timer) timer.unref()
+      let child: ChildProcessWithoutNullStreams
+      try {
+        child = spawn(binary, args, { env: process.env })
+      } catch (error) {
+        finish(this.fail(error instanceof Error ? error.message : String(error)))
+        return
+      }
+      this.child = child
 
-        const onOutput = (chunk: string): void => {
-          tunnelLog(chunk.trimEnd())
-          recent = (recent + chunk).slice(-4000)
-          if (/429|1015/.test(chunk) && this.status.state === 'starting') {
-            finish(this.fail('Cloudflare 正在限流（429），过几分钟再开一次'))
-            return
-          }
-          const match = URL_PATTERN.exec(chunk)
-          if (match) {
-            finish({ state: 'on', url: match[0], target: this.target, error: '' })
-          }
+      const onOutput = (chunk: Buffer): void => {
+        const text = chunk.toString()
+        tunnelLog(text.trimEnd())
+        recent = (recent + text).slice(-4000)
+        if (/429|1015/.test(text) && this.status.state === 'starting') {
+          finish(this.fail('Cloudflare 正在限流（429），过几分钟再开一次'))
+          return
         }
-        tunnel.on('url', (url: string) => {
-          finish({ state: 'on', url: url.replace(/\/$/, ''), target: this.target, error: '' })
-        })
-        tunnel.on('stdout', onOutput)
-        tunnel.on('stderr', onOutput)
-        tunnel.on('error', (error: Error) => {
-          finish(this.fail(error.message))
-        })
-        tunnel.on('exit', (code: number | null) => {
-          this.tunnel = null
-          if (this.status.state === 'on') {
-            this.status = { state: 'off', url: '', target: this.target, error: `cloudflared 退出（code ${code ?? '?'}）` }
-          } else if (/429|1015/.test(recent)) {
-            finish(this.fail('Cloudflare 正在限流（429），过几分钟再开一次'))
-          } else {
-            finish(this.fail(`cloudflared 启动失败（code ${code ?? '?'}）`))
-          }
-        })
+        const match = URL_PATTERN.exec(text)
+        if (match) finish({ state: 'on', url: match[0], target: this.target, error: '' })
+      }
+      child.stdout.on('data', onOutput)
+      child.stderr.on('data', onOutput)
+      child.on('error', (error) => {
+        finish(this.fail(error.message))
       })
-    } catch (error) {
-      return this.fail(error instanceof Error ? error.message : String(error))
-    }
+      child.on('exit', (code) => {
+        this.child = null
+        if (this.status.state === 'on') {
+          this.status = { state: 'off', url: '', target: this.target, error: `cloudflared 退出（code ${code ?? '?'}）` }
+        } else if (/429|1015/.test(recent)) {
+          finish(this.fail('Cloudflare 正在限流（429），过几分钟再开一次'))
+        } else {
+          finish(this.fail(`cloudflared 启动失败（code ${code ?? '?'}）`))
+        }
+      })
+    })
   }
 
   private fail(message: string): TunnelStatus {
@@ -205,10 +190,10 @@ export class QuickTunnel {
   }
 
   stop(): void {
-    const tunnel = this.tunnel
-    this.tunnel = null
+    const child = this.child
+    this.child = null
     try {
-      tunnel?.stop()
+      child?.kill('SIGTERM')
     } catch {
       // 退出失败就算了
     }
