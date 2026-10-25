@@ -65,8 +65,7 @@ dsh plugin --profile desktop add /绝对路径/dsh-holdem-p2p
 
 - 隧道随时可以在邀请面板里关掉/重开（关掉后链接退回 `127.0.0.1`）。
 - 第一次拉起会用到 `cloudflared`：优先用 PATH 里的，其次用 npm 依赖自带的，都没有才会下载一次。
-- 本机装了代理（Clash 等）时，记得把 `*.trycloudflare.com` 设为直连，否则链接打不开——
-  插件的自检会直接提示这一点。
+- 如果本机有代理/网络策略，确保 `*.trycloudflare.com` 能直连，否则这条链接在别的设备上打不开。
 - 想固定域名/自建隧道：把 `publicBaseUrl` 配成你的地址即可覆盖自动生成的地址。
 
 ## 设置

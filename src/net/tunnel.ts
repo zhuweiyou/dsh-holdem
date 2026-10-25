@@ -12,8 +12,6 @@ export interface TunnelStatus {
   target: string
   /** 失败时的原因 */
   error: string
-  /** 起来了但本机连不上时的提醒（多半是代理拦截了 trycloudflare） */
-  warning?: string
 }
 
 const URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i
@@ -64,7 +62,7 @@ export class QuickTunnel {
     this.status = { state: 'off', url: '', target, error: '' }
   }
 
-  /** 起来后用本机再访问一次公网地址：很多机器上有代理，会正好卡在这里。 */
+  /** 起来后用本机再访问一次公网地址，只写日志（界面上不提示）。 */
   private async selfCheck(url: string): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
@@ -75,11 +73,7 @@ export class QuickTunnel {
       }
       await new Promise((resolve) => setTimeout(resolve, 3000))
     }
-    if (this.status.state !== 'on') return
-    this.status = {
-      ...this.status,
-      warning: '隧道已开，但本机访问公网地址失败：常见原因是代理（Clash 等）拦截了 *.trycloudflare.com，请把该域名设为直连。',
-    }
+    this.log?.(`隧道自检未通过：${url} 从本机访问不到（不影响其它机器是否可达）`)
   }
 
   getStatus(): TunnelStatus {
@@ -110,7 +104,12 @@ export class QuickTunnel {
     try {
       use(binary)
       // 这个包的 options 会把 key 原样拼进命令行，所以键名要自带 `--`
-      const tunnel = Tunnel.quick(this.target, { '--no-autoupdate': true })
+      // http2 + 强制 IPv4：走代理（Clash 等）时比 QUIC 稳得多
+      const tunnel = Tunnel.quick(this.target, {
+        '--no-autoupdate': true,
+        '--protocol': 'http2',
+        '--edge-ip-version': '4',
+      })
       this.tunnel = tunnel
 
       return await new Promise<TunnelStatus>((resolve) => {

@@ -12,7 +12,7 @@ import css from './styles.module.css'
 
 export function Table({ view }: { view: PlayerView }) {
   const state = useClientState()
-  const [railOpen, setRailOpen] = useState(true)
+  const [railOpen, setRailOpen] = useState(() => readRailPref())
   const narrow = useNarrow()
   const hand = view.hand
   const room = view.room
@@ -83,8 +83,17 @@ export function Table({ view }: { view: PlayerView }) {
           </div>
         </div>
         <div className={css.headerActions}>
-          <button type="button" className={cx(css.btn, css.btnChip)} onClick={() => setRailOpen((open) => !open)}>
-            {railOpen ? t('common.close') : t('rail.leaderboard')}
+          <button
+            type="button"
+            className={cx(css.btn, css.btnChip)}
+            onClick={() => {
+              setRailOpen((open) => {
+                writeRailPref(!open)
+                return !open
+              })
+            }}
+          >
+            {railOpen ? t('table.hideRail') : t('table.showRail')}
           </button>
           {isHost && room.phase !== 'hand' ? (
             <button type="button" className={cx(css.btn, css.btnChip)} onClick={() => void runCommand({ type: 'hostPause' })}>
@@ -298,6 +307,24 @@ export function Table({ view }: { view: PlayerView }) {
       </div>
     </div>
   )
+}
+
+const RAIL_KEY = 'holdem-p2p:rail'
+
+function readRailPref(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) !== 'closed'
+  } catch {
+    return true
+  }
+}
+
+function writeRailPref(open: boolean): void {
+  try {
+    localStorage.setItem(RAIL_KEY, open ? 'open' : 'closed')
+  } catch {
+    // 忽略
+  }
 }
 
 function actorLabel(view: PlayerView): string {

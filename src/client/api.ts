@@ -70,7 +70,6 @@ export interface TunnelStatus {
   url: string
   target: string
   error: string
-  warning?: string
 }
 
 export interface SessionResponse {

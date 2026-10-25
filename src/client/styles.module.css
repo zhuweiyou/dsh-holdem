@@ -60,8 +60,10 @@
   font-weight: 700;
 }
 
-.btnPrimary:hover:not(:disabled) {
+.btn.btnPrimary:hover:not(:disabled) {
   background: var(--dsw-alias-brand-primary, #2f9c76);
+  border-color: transparent;
+  color: var(--dsw-alias-bg-base, #06130f);
   filter: brightness(1.08);
 }
 
@@ -872,16 +874,16 @@
   position: absolute;
   right: 6px;
   top: 6px;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
+  padding: 0 6px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
   border: 1px solid var(--dsw-alias-state-error-primary, #d64545);
-  background: transparent;
+  background: var(--dsw-alias-bg-base, #fff);
   color: var(--dsw-alias-state-error-primary, #d64545);
-  font-size: 9px;
+  font: inherit;
+  font-size: 9.5px;
   line-height: 1;
   cursor: pointer;
 }
@@ -1250,11 +1252,25 @@
 }
 
 .spectatorChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10.5px;
   padding: 1px 8px;
   border-radius: 999px;
   border: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.28));
   color: var(--dsw-alias-label-secondary, #93a0b1);
+}
+
+.spectatorKick {
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary, #d64545);
+  font: inherit;
+  font-size: 9.5px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
 }
 
 .railChat {
@@ -1567,6 +1583,13 @@
   padding: 5px 11px;
 }
 
+.btn.inviteBtn:hover:not(:disabled) {
+  background: var(--dsw-alias-brand-primary, #2f9c76);
+  border-color: transparent;
+  color: var(--dsw-alias-bg-base, #fff);
+  filter: brightness(1.08);
+}
+
 .localTag {
   border: 1px solid var(--dsw-alias-state-warn-primary, #b7791f);
   border-radius: 999px;
@@ -1700,6 +1723,13 @@
 .inviteError {
   color: var(--dsw-alias-state-error-primary, #d64545);
   font-size: 11.5px;
+}
+
+.sheetNote {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary, #93a0b1);
 }
 
 .codeLine {

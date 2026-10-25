@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { PlayerView } from '../types.ts'
 import { t } from './i18n.ts'
+import { runCommand } from './store.ts'
 import { cx, formatBb, formatChips, signedChips } from './ui.ts'
 import css from './styles.module.css'
 
@@ -11,6 +12,7 @@ export interface SideRailProps {
 }
 
 export function SideRail({ view, onChat, busy }: SideRailProps) {
+  const isHost = view.room.hostPlayerId === view.you.playerId
   const [draft, setDraft] = useState('')
   const send = (): void => {
     const text = draft.trim()
@@ -61,7 +63,23 @@ export function SideRail({ view, onChat, busy }: SideRailProps) {
         {view.spectators.length === 0 ? <p className={css.railEmpty}>{t('rail.noSpectators')}</p> : null}
         <div className={css.spectatorList}>
           {view.spectators.map((entry) => (
-            <span key={entry.playerId} className={css.spectatorChip}>{entry.displayName}</span>
+            <span key={entry.playerId} className={css.spectatorChip}>
+              {entry.displayName}
+              {isHost ? (
+                <button
+                  type="button"
+                  className={css.spectatorKick}
+                  title={t('table.kick')}
+                  onClick={() => {
+                    if (window.confirm(t('table.kickConfirm', { name: entry.displayName }))) {
+                      void runCommand({ type: 'hostKick', playerId: entry.playerId })
+                    }
+                  }}
+                >
+                  ✕
+                </button>
+              ) : null}
+            </span>
           ))}
         </div>
       </section>

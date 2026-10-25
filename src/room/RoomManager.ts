@@ -565,10 +565,14 @@ export class RoomManager {
       }
       case 'hostKick': {
         this.requireHost(room, playerId)
-        if (room.phase !== 'lobby') throw new CommandError('phase', '对局中不能踢人')
         const target = command.playerId
         if (target === room.hostPlayerId) throw new CommandError('illegal', '不能踢房主')
-        if (!room.players.has(target)) throw new CommandError('illegal', '玩家不在房间里')
+        const targetPlayer = room.players.get(target)
+        if (!targetPlayer) throw new CommandError('illegal', '玩家不在房间里')
+        // 座位上的牌友只有在大厅能踢；观战者随时可以清走
+        if (targetPlayer.seat !== null && room.phase !== 'lobby') {
+          throw new CommandError('phase', '对局中不能踢座位上的人')
+        }
         this.removePlayer(room, target)
         this.dropSessionsOf(room, target)
         this.sendTo(target, { type: 'kicked', seq: room.seq, reason: '你被房主请出了房间' })

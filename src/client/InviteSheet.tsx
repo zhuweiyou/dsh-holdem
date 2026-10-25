@@ -93,10 +93,27 @@ export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () =
             <code className={css.urlText} title={room.joinUrl}>
               {tunnel?.url ?? hostOf(room.joinUrl)}
             </code>
+            <button
+              type="button"
+              className={cx(css.btn, css.btnChip)}
+              disabled={pending}
+              onClick={() => {
+                void (async () => {
+                  setPending(true)
+                  try {
+                    await api.tunnelStop()
+                    setTunnel(await api.tunnelStart())
+                  } finally {
+                    setPending(false)
+                  }
+                })()
+              }}
+            >
+              {pending ? t('invite.starting') : t('invite.refresh')}
+            </button>
             <button type="button" className={cx(css.btn, css.btnChip)} disabled={pending} onClick={() => void toggle()}>
               {t('invite.disable')}
             </button>
-            {tunnel?.warning ? <span className={css.inviteError}>{tunnel.warning}</span> : null}
           </div>
         ) : (
           <div className={css.inviteWarn}>
@@ -124,6 +141,8 @@ export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () =
             </button>
           </div>
         ))}
+
+        <p className={css.sheetNote}>{t('invite.ephemeral')}</p>
 
         <div className={css.codeLine}>
           <span>{t('invite.codeHint', { code: room.roomCode })}</span>
