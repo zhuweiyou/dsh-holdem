@@ -1,0 +1,90 @@
+{
+  "name": "dsh-holdem-p2p",
+  "version": "0.1.0",
+  "description": "点对点德州扑克：房主进程即服务端，6 人桌、超员观战、多局累计排行榜。",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "texas-holdem",
+    "poker",
+    "peer-to-peer"
+  ],
+  "license": "MIT",
+  "author": "",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "pnpm run clean && node scripts/emit-dts.mjs && tsdown --config tsdown.config.ts && tsdown --config tsdown.client.ts",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run",
+    "verify": "pnpm typecheck && pnpm build && pnpm test"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.4",
+    "@types/node": "^24.3.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.7",
+    "@types/ws": "^8.18.1",
+    "lightningcss": "^1.30.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.3.1",
+    "tsdown": "^0.15.6",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  }
+}

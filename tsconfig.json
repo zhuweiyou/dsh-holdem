@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "paths": {
+      "@deepseek-ai/cordis": ["./types/shims/cordis.ts"],
+      "@deepseek-ai/schemastery": ["./types/shims/schemastery.ts"],
+      "@deepseek-ai/dsh-client-runtime/client": ["./types/shims/dsh-client-runtime.ts"],
+      "@deepseek-ai/dsh-client-ui-slots": ["./types/shims/dsh-client-ui-slots.ts"],
+      "@deepseek-ai/dsh-client-locale/client": ["./types/shims/dsh-client-locale.ts"]
+    }
+  },
+  "include": ["src", "types", "tests", "scripts"]
+}

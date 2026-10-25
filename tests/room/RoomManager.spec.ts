@@ -1,0 +1,200 @@
+import { describe, expect, it } from 'vitest'
+import { resolveConfig } from '../../src/config.ts'
+import { RoomManager, StaleCommandError } from '../../src/room/RoomManager.ts'
+import { noopStore } from '../../src/persist/store.ts'
+import type { ClientCommand, PlayerId, PlayerView, RoomId } from '../../src/types.ts'
+
+class FakeClock {
+  t = 1_700_000_000_000
+  now = (): number => this.t
+  advance(ms: number): void {
+    this.t += ms
+  }
+}
+
+function setup(options: { turnTimeoutSec?: number; autoAdvanceSec?: number } = {}) {
+  const clock = new FakeClock()
+  const manager = new RoomManager({
+    config: resolveConfig({
+      publicBaseUrl: '',
+      defaultBlindLevel: '25/50',
+      turnTimeoutSec: options.turnTimeoutSec ?? 30,
+      autoAdvanceSec: options.autoAdvanceSec ?? 2,
+      hostIdleDissolveMin: 10,
+    }),
+    origin: () => 'http://127.0.0.1:49923',
+    now: clock.now,
+    store: noopStore,
+  })
+  return { manager, clock }
+}
+
+function send(manager: RoomManager, view: PlayerView, command: ClientCommand, actionId?: string) {
+  return manager.command(view.room.roomId, view.you.playerId, command, view.room.seq, actionId)
+}
+
+describe('房间与入座', () => {
+  it('6 人坐满后第 7 人自动观战', () => {
+    const { manager } = setup()
+    const host = manager.createRoom({ title: '测试桌', displayName: '房主' })
+    expect(host.view.room.seats[0]!.displayName).toBe('房主')
+
+    for (let i = 1; i < 6; i += 1) {
+      manager.join({ roomCode: host.roomCode, role: 'sit', displayName: `玩家${i}`, local: true })
+    }
+    const preview = manager.peek({ roomCode: host.roomCode, local: true })
+    expect(preview.seated).toBe(6)
+    expect(preview.canSit).toBe(false)
+
+    const spectator = manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '旁观', local: true })
+    expect(spectator.seat).toBeNull()
+    expect(spectator.view.you.spectator).toBe(true)
+    expect(spectator.view.spectators.map((entry) => entry.displayName)).toContain('旁观')
+  })
+
+  it('同一 cookie 重连复用同一玩家', () => {
+    const { manager } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    const rejoined = manager.join({
+      roomCode: host.roomCode,
+      role: 'sit',
+      displayName: '房主',
+      local: true,
+      cookies: [host.sessionToken],
+    })
+    expect(rejoined.playerId).toBe(host.hostPlayerId)
+    expect(rejoined.seat).toBe(0)
+  })
+
+  it('房主可以踢人，被踢者收到事件', () => {
+    const { manager } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    const guest = manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '小张', local: true })
+    const events: string[] = []
+    manager.onEvent((playerId, event) => {
+      if (playerId === guest.playerId) events.push(event.type)
+    })
+    send(manager, manager.view(host.roomId, host.hostPlayerId), { type: 'hostKick', playerId: guest.playerId })
+    expect(events).toContain('kicked')
+    expect(manager.view(host.roomId, host.hostPlayerId).room.seats[1]!.playerId).toBeNull()
+  })
+})
+
+describe('开局与行动', () => {
+  it('两人准备后可开局，且不泄露对手底牌', () => {
+    const { manager } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    const guest = manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '客人', local: true })
+
+    send(manager, manager.view(host.roomId, host.hostPlayerId), { type: 'start' })
+    const hostView = manager.view(host.roomId, host.hostPlayerId)
+    const guestView = manager.view(host.roomId, guest.playerId)
+
+    expect(hostView.room.phase).toBe('hand')
+    expect(hostView.you.holeCards).toHaveLength(2)
+    expect(guestView.you.holeCards).toHaveLength(2)
+    expect(hostView.you.holeCards).not.toEqual(guestView.you.holeCards)
+
+    const hostCards = new Set(hostView.you.holeCards)
+    const guestSeat = hostView.room.seats.find((seat) => seat.playerId === guest.playerId)!
+    expect(guestSeat.holeCount).toBe(2)
+
+    const serialized = JSON.stringify(guestView)
+    for (const card of hostCards) expect(serialized.includes(`"${card}"`)).toBe(false)
+  })
+
+  it('完整打完一手后进入 handOver 并自动开下一手', () => {
+    const { manager, clock } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    const guest = manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '客人', local: true })
+    send(manager, manager.view(host.roomId, host.hostPlayerId), { type: 'start' })
+
+    drive(manager, host.roomId, [host.hostPlayerId, guest.playerId])
+    const view = manager.view(host.roomId, host.hostPlayerId)
+    expect(view.room.phase).toBe('handOver')
+    expect(view.lastHand).not.toBeNull()
+    expect(view.lastHand!.deltas.reduce((sum, delta) => sum + delta.net, 0)).toBe(0)
+
+    clock.advance(3000)
+    manager.tick()
+    const next = manager.view(host.roomId, host.hostPlayerId)
+    expect(next.room.phase).toBe('hand')
+    expect(next.room.handNo).toBe(2)
+  })
+
+  it('超时自动行动并推进', () => {
+    const { manager, clock } = setup({ turnTimeoutSec: 15 })
+    const host = manager.createRoom({ displayName: '房主' })
+    manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '客人', local: true })
+    send(manager, manager.view(host.roomId, host.hostPlayerId), { type: 'start' })
+
+    const before = manager.view(host.roomId, host.hostPlayerId)
+    clock.advance(15_001)
+    manager.tick()
+    const after = manager.view(host.roomId, host.hostPlayerId)
+    expect(after.room.seq).toBeGreaterThan(before.room.seq)
+    expect(after.hand !== null && before.hand !== null).toBe(true)
+  })
+
+  it('过期 baseSeq 被拒绝，重复 actionId 幂等', () => {
+    const { manager } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    const guest = manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '客人', local: true })
+    send(manager, manager.view(host.roomId, host.hostPlayerId), { type: 'start' })
+
+    const actor = [host.hostPlayerId, guest.playerId]
+      .map((id) => manager.view(host.roomId, id))
+      .find((view) => view.you.canAct)!
+    expect(actor).toBeDefined()
+
+    const command: ClientCommand = {
+      type: 'action',
+      action: actor.you.legal!.canCheck ? { type: 'check' } : { type: 'call' },
+    }
+    expect(() => manager.command(host.roomId, actor.you.playerId, command, actor.room.seq * 7))
+      .toThrow(StaleCommandError)
+
+    const first = manager.command(host.roomId, actor.you.playerId, command, actor.room.seq, 'act-1')
+    const again = manager.command(host.roomId, actor.you.playerId, command, first.seq, 'act-1')
+    expect(again.duplicate).toBe(true)
+    expect(again.seq).toBe(first.seq)
+  })
+
+  it('房主解散后所有人都拿到结算与排名', () => {
+    const { manager } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    const guest = manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '客人', local: true })
+    send(manager, manager.view(host.roomId, host.hostPlayerId), { type: 'start' })
+    drive(manager, host.roomId, [host.hostPlayerId, guest.playerId])
+
+    let settled = 0
+    manager.onEvent((_playerId, event) => {
+      if (event.type === 'settled') settled += 1
+    })
+    send(manager, manager.view(host.roomId, host.hostPlayerId), { type: 'hostDissolve' })
+    const view = manager.view(host.roomId, guest.playerId)
+    expect(view.room.phase).toBe('closed')
+    expect(view.settlement).not.toBeNull()
+    expect(view.settlement!.players).toHaveLength(2)
+    expect(view.settlement!.players[0]!.rank).toBe(1)
+    expect(view.settlement!.players.reduce((sum, player) => sum + player.netChips, 0)).toBe(0)
+    expect(settled).toBeGreaterThan(0)
+  })
+})
+
+/** 反复用合法动作推进，直到这一手结束。 */
+function drive(manager: RoomManager, roomId: RoomId, playerIds: readonly PlayerId[]): void {
+  for (let step = 0; step < 300; step += 1) {
+    const views = playerIds.map((id) => manager.view(roomId, id))
+    if (views[0]!.room.phase !== 'hand') return
+    const actor = views.find((view) => view.you.canAct)
+    if (!actor) return
+    const legal = actor.you.legal!
+    const command: ClientCommand = {
+      type: 'action',
+      action: legal.canCheck ? { type: 'check' } : { type: 'call' },
+    }
+    manager.command(roomId, actor.you.playerId, command, actor.room.seq)
+  }
+  throw new Error('hand did not finish')
+}
