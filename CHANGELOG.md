@@ -31,3 +31,6 @@
 - 局域网分享：DSH 只监听 127.0.0.1，插件自带一个只转发 /holdem-p2p 的 0.0.0.0 小代理，邀请面板多一条局域网链接
 - 主色/邀请/加注/危险按钮的 hover 全部单独兜住，不再被通用按钮样式刷白
 - 新增局域网代理与私有网段 Origin 的集成测试
+- 开桌位置抽象（`backends.ts`）：建房表单可在「本机 / Cloudflare」之间选择，后续方案加一条即可
+- 新增 Cloudflare Worker + Durable Object 版服务端（复用规则引擎与房间状态机，带 CORS），`pnpm worker:deploy` 一键部署
+- 渲染层与 API 支持切换后端（请求基址、WS 地址、token 都跟着走）

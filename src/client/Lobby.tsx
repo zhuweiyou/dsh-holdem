@@ -4,6 +4,7 @@ import { BLIND_LEVELS } from '../invariant.ts'
 import { ApiError, api } from './api.ts'
 import { t } from './i18n.ts'
 import { createRoom, joinRoom, useClientState } from './store.ts'
+import { HOSTING_OPTIONS, hostingOption } from './backends.ts'
 import { browserId, clearDeepLink, parseDeepLink, rememberName, rememberedName } from './presence.ts'
 import { cx, formatChips } from './ui.ts'
 import css from './styles.module.css'
@@ -33,6 +34,22 @@ function parseJoinInput(text: string, fallbackInvite: string): JoinInput {
   return { code: trimmed.replace(/\D/g, '').slice(0, 6), invite: fallbackInvite, link: null, sameHost: true }
 }
 
+function readPref(key: string, fallback: string): string {
+  try {
+    return localStorage.getItem(`holdem-p2p:${key}`) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+function writePref(key: string, value: string): void {
+  try {
+    localStorage.setItem(`holdem-p2p:${key}`, value)
+  } catch {
+    // 忽略
+  }
+}
+
 function buildLabel(): string {
   const raw = typeof __HOLDEM_BUILD__ === 'string' ? __HOLDEM_BUILD__ : ''
   const date = raw ? new Date(raw) : null
@@ -49,6 +66,8 @@ export function Lobby() {
   const [name, setName] = useState(() => rememberedName())
   const [title, setTitle] = useState('')
   const [blindLevel, setBlindLevel] = useState<string>('25/50')
+  const [hosting, setHosting] = useState<string>(() => readPref('hosting', 'local'))
+  const [workerUrl, setWorkerUrl] = useState<string>(() => readPref('worker-url', ''))
   const [joinText, setJoinText] = useState(deepLink?.code ?? '')
   const [invite, setInvite] = useState(deepLink?.invite ?? '')
   const [preview, setPreview] = useState<RoomPreview | null>(null)
@@ -77,8 +96,18 @@ export function Lobby() {
       return
     }
     rememberName(name.trim())
+    const option = hostingOption(hosting)
+    if (option.needsUrl && workerUrl.trim() === '') {
+      setError(t('host.needWorkerUrl'))
+      return
+    }
+    writePref('hosting', hosting)
+    if (option.needsUrl) writePref('worker-url', workerUrl.trim())
     try {
-      await createRoom({ title: title.trim() || undefined, blindLevel, displayName: name.trim() })
+      await createRoom(
+        { title: title.trim() || undefined, blindLevel, displayName: name.trim() },
+        option.resolveBase({ url: workerUrl }),
+      )
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('error.generic'))
     }
@@ -197,6 +226,30 @@ export function Lobby() {
                 ))}
               </select>
             </label>
+            <div className={css.field}>
+              <span className={css.fieldLabel}>{t('host.label')}</span>
+              <div className={css.hostRow}>
+                {HOSTING_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={cx(css.btn, css.btnChip, hosting === option.id && css.hostActive)}
+                    onClick={() => setHosting(option.id)}
+                  >
+                    {option.label()}
+                  </button>
+                ))}
+              </div>
+              <p className={css.hint}>{hostingOption(hosting).hint()}</p>
+              {hostingOption(hosting).needsUrl ? (
+                <input
+                  className={css.input}
+                  value={workerUrl}
+                  placeholder={hostingOption(hosting).urlPlaceholder?.() ?? ''}
+                  onChange={(event) => setWorkerUrl(event.target.value)}
+                />
+              ) : null}
+            </div>
             <button type="button" className={cx(css.btn, css.btnPrimary, css.btnWide)} disabled={state.busy} onClick={() => void submitCreate()}>
               {t('lobby.createAction')}
             </button>

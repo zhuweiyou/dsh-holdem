@@ -1,14 +1,11 @@
-import { randomInt } from 'node:crypto'
+import { randomBelow } from '../room/ids.ts'
 import type { Card } from '../types.ts'
 import { RANK_CHARS, SUIT_CHARS, makeCard } from './cards.ts'
 
 export type RandomBelow = (maxExclusive: number) => number
 
 /** 密码学无偏随机：拒绝采样，避免取模偏置。 */
-export const cryptoBelow: RandomBelow = (maxExclusive) => {
-  if (maxExclusive <= 0) throw new Error('maxExclusive must be positive')
-  return randomInt(maxExclusive)
-}
+export const cryptoBelow: RandomBelow = (maxExclusive) => randomBelow(maxExclusive)
 
 export function makeDeck(): Card[] {
   const deck: Card[] = []

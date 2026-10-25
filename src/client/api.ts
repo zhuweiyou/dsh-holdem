@@ -6,6 +6,18 @@ const HEADERS = {
   'x-requested-with': 'dsh-holdem-p2p',
 }
 
+/** 后端基址：'' = 当前 DSH 进程；也可以指到 Cloudflare Worker 上。 */
+let apiBase = ''
+
+export function setApiBase(base: string): void {
+  const trimmed = base.trim().replace(/\/+$/, '')
+  apiBase = trimmed === '' ? '' : trimmed
+}
+
+export function getApiBase(): string {
+  return apiBase
+}
+
 /** 座位 token 走请求头，不依赖浏览器是否保留 cookie。 */
 let seatTokens: string[] = []
 
@@ -28,8 +40,8 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${PREFIX}${path}`, {
-    credentials: 'same-origin',
+  const response = await fetch(`${apiBase}${PREFIX}${path}`, {
+    credentials: apiBase === '' ? 'same-origin' : 'omit',
     ...init,
     headers: {
       ...HEADERS,

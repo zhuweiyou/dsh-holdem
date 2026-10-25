@@ -1,24 +1,10 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { HandResultView, SessionSummary } from '../types.ts'
+import { noopStore, type HandRecord, type HoldemStore } from './noop.ts'
 
-export interface HandRecord extends HandResultView {
-  roomCode: string
-  title: string
-  recordedAt: string
-}
-
-export interface HoldemStore {
-  appendHand(record: HandRecord): void
-  appendSession(summary: SessionSummary): void
-}
-
-/** 无持久化时的空实现。 */
-export const noopStore: HoldemStore = {
-  appendHand() {},
-  appendSession() {},
-}
+export { noopStore }
+export type { HandRecord, HoldemStore }
 
 export function storeRoot(): string {
   const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')

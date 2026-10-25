@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { ClientCommand, PlayerView, ServerEvent } from '../types.ts'
-import { ApiError, api, newActionId, setSeatTokens } from './api.ts'
+import { ApiError, api, getApiBase, newActionId, setApiBase, setSeatTokens } from './api.ts'
 import { browserId } from './presence.ts'
 import { t } from './i18n.ts'
 
@@ -41,6 +41,7 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined
 let toastSeq = 0
 let disposed = false
 
+restoreBackend()
 syncSeatTokens()
 
 const ROOM_KEY = 'holdem-p2p:room'
@@ -132,9 +133,33 @@ export function clearToast(): void {
 
 // ------------------------------------------------------------------ 通道
 
+const BASE_KEY = 'holdem-p2p:api-base'
+
 function wsUrl(ticket: string): string {
-  const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${location.host}/holdem-p2p/ws?ticket=${encodeURIComponent(ticket)}`
+  const base = getApiBase()
+  const url = base === '' ? new URL(location.href) : new URL(base)
+  const protocol = url.protocol === 'https:' ? 'wss' : 'ws'
+  return `${protocol}://${url.host}/holdem-p2p/ws?ticket=${encodeURIComponent(ticket)}`
+}
+
+/** 切换后端（本机 / Cloudflare Worker），下一轮刷新也能回到同一处。 */
+export function useBackend(base: string): void {
+  setApiBase(base)
+  try {
+    if (base === '') sessionStorage.removeItem(BASE_KEY)
+    else sessionStorage.setItem(BASE_KEY, base)
+  } catch {
+    // 忽略
+  }
+}
+
+export function restoreBackend(): void {
+  try {
+    const saved = sessionStorage.getItem(BASE_KEY)
+    if (saved) setApiBase(saved)
+  } catch {
+    // 忽略
+  }
 }
 
 function stopPolling(): void {
@@ -327,8 +352,12 @@ export function dispose(): void {
   state = { booted: false, busy: false, connection: 'idle', view: null, notice: null, toast: null, autoInvite: false }
 }
 
-export async function createRoom(input: { title?: string | undefined; blindLevel: string; displayName: string }): Promise<void> {
+export async function createRoom(
+  input: { title?: string | undefined; blindLevel: string; displayName: string },
+  base = '',
+): Promise<void> {
   set({ busy: true })
+  if (base !== '') useBackend(base)
   try {
     const created = await api.createRoom({ ...input, browserId: browserId() })
     rememberRoom(created.view.room.roomId)
@@ -338,6 +367,7 @@ export async function createRoom(input: { title?: string | undefined; blindLevel
     connectChannel(created.view.room.roomId, created.wsTicket)
   } catch (error) {
     set({ busy: false })
+    if (base !== '') useBackend('')
     toast(errorText(error), 'error')
     throw error
   }

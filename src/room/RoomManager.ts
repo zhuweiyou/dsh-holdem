@@ -1,4 +1,5 @@
-import { validatePublicBaseUrl, type ResolvedConfig } from '../config.ts'
+import type { ResolvedConfig } from '../config.ts'
+import { validatePublicBaseUrl } from '../net/url.ts'
 import type {
   ChatLine,
   ClientCommand,
@@ -16,7 +17,6 @@ import type {
   SessionSummary,
   TableAction,
 } from '../types.ts'
-import { firstLanIPv4 } from '../net/network.ts'
 import { CommandError, asPlayerId, asRoomId, asSessionId, nowIso } from '../types.ts'
 import {
   MAX_CHAT_LINES,
@@ -32,8 +32,8 @@ import {
 } from '../invariant.ts'
 import { act, createHand, foldSeat, forceTimeout, handView, legalForSeat, tick as tickHand, type HandState } from '../engine/hand.ts'
 import { HandError } from '../engine/hand.ts'
-import type { HoldemStore } from '../persist/store.ts'
-import { noopStore } from '../persist/store.ts'
+import type { HoldemStore } from '../persist/noop.ts'
+import { noopStore } from '../persist/noop.ts'
 import {
   hashEquals,
   hashInvite,
@@ -118,6 +118,8 @@ export interface RoomManagerOptions {
   now?: () => number
   store?: HoldemStore
   log?: (message: string) => void
+  /** 局域网 IPv4（Node 下用 os.networkInterfaces，Worker 下为空）。 */
+  lanIp?: () => string
 }
 
 export interface CreateRoomInput {
@@ -197,6 +199,7 @@ export class RoomManager {
     this.origin = options.origin
     this.now = options.now ?? (() => Date.now())
     this.store = options.store ?? noopStore
+    this.lanIp = options.lanIp ?? (() => '')
     void options.log
   }
 
@@ -206,6 +209,7 @@ export class RoomManager {
 
   /** 内置隧道拿到地址后，运行时把对外地址换掉（影响邀请链接与 shareable）。 */
   private lanPort = 0
+  private readonly lanIp: () => string
 
   /** 局域网小代理的端口（0 表示没起来）。 */
   setLanPort(port: number): void {
@@ -222,7 +226,9 @@ export class RoomManager {
 
   start(): () => void {
     const timer = setInterval(() => this.tick(), TICK_MS)
-    if (typeof timer === 'object' && 'unref' in timer) timer.unref()
+    // Node 下别让定时器拖住进程；Workers 里 setInterval 返回数字，没有 unref
+    const handle = timer as unknown as { unref?: () => void }
+    if (typeof handle === 'object' && typeof handle.unref === 'function') handle.unref()
     return () => clearInterval(timer)
   }
 
@@ -860,7 +866,7 @@ export class RoomManager {
   /** 同一局域网可直连的邀请链接；需要局域网代理在跑、而且拿得到网卡地址。 */
   private lanJoinUrl(room: LiveRoom): string {
     if (this.lanPort <= 0) return ''
-    const ip = firstLanIPv4()
+    const ip = this.lanIp()
     if (!ip) return ''
     return `http://${ip}:${this.lanPort}${this.config.routePrefix}/play?code=${room.roomCode}&invite=${encodeURIComponent(room.sitToken)}&role=auto`
   }

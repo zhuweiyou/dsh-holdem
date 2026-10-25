@@ -54,7 +54,10 @@
     "build": "pnpm run clean && node scripts/emit-dts.mjs && tsdown --config tsdown.config.ts && tsdown --config tsdown.client.ts",
     "typecheck": "tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run",
-    "verify": "pnpm typecheck && pnpm build && pnpm test"
+    "verify": "pnpm typecheck && pnpm build && pnpm test",
+    "worker:dev": "wrangler dev --port 8787",
+    "worker:deploy": "wrangler deploy",
+    "worker:typecheck": "tsc -p worker/tsconfig.json --noEmit"
   },
   "dependencies": {
     "cloudflared": "^0.7.3",
@@ -73,6 +76,7 @@
     }
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261024.1",
     "@deepseek-ai/schemastery": "^3.18.4",
     "@types/node": "^24.3.0",
     "@types/react": "~18.3.1",
@@ -83,7 +87,8 @@
     "react-dom": "^18.3.1",
     "tsdown": "^0.15.6",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.152.0"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

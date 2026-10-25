@@ -121,6 +121,19 @@
   color: var(--dsw-alias-label-secondary, #93a0b1);
 }
 
+.hostRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hostActive {
+  border-color: var(--dsw-alias-brand-primary, #2f9c76);
+  background: var(--dsw-alias-brand-primary, #2f9c76);
+  color: var(--dsw-alias-bg-base, #fff);
+  font-weight: 700;
+}
+
 .hintLink {
   color: var(--dsw-alias-brand-primary, #141414);
   text-decoration: underline;

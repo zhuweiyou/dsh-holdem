@@ -20,6 +20,7 @@ beforeAll(async () => {
     origin: () => `http://127.0.0.1:${targetPort}`,
     now: Date.now,
     store: noopStore,
+    lanIp: () => '192.168.0.103',
   })
   const routes: { path: string; handler: (req: unknown, res: unknown) => unknown }[] = []
   const fake: WebServer = {

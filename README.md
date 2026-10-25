@@ -56,6 +56,39 @@ dsh plugin --profile desktop add /绝对路径/dsh-holdem-p2p
 - 窗口窄于 900px 时牌桌自动切成列表式，结算横幅改回文档流，不会跑出牌桌外。
 - 点数与花色按牌面尺寸放大（md 22px / lg 28px），座位小牌 15px。
 
+## 开桌位置：本机 / Cloudflare
+
+建房表单里可以选「开桌位置」，这就是一个可扩展的后端抽象（`src/client/backends.ts`，加方案只要加一个条目）：
+
+| 方案 | 说明 |
+| --- | --- |
+| **本机** | 牌桌跑在你自己的 dsh 里；同一 Wi-Fi 用局域网链接，公网链接取决于隧道 |
+| **Cloudflare** | 牌桌跑在 Cloudflare Worker + Durable Object 上，**关掉你的电脑也能玩**；填一次部署好的 Worker 地址 |
+
+### 部署自己的 Cloudflare 牌桌（一次性）
+
+```sh
+# 1. 第一次需要浏览器授权（wrangler login 会弹 Cloudflare 同意页），或者用 API Token：
+export CLOUDFLARE_API_TOKEN=...        # 至少 Workers Scripts:Edit + Durable Objects:Edit
+
+# 2. 部署（Durable Object 用的是 SQLite 存储，免费计划即可）
+pnpm worker:deploy
+
+# 3. 本地调试（可选）
+pnpm worker:dev                        # http://127.0.0.1:8787
+```
+
+部署完会得到类似 `https://dsh-holdem-p2p.<你的账号>.workers.dev` 的地址：
+把它填进建房表单的「Cloudflare」那一栏，之后建房、邀请链接、网页牌桌全部由 Worker 提供，
+和你本机开不开 dsh 无关。
+
+实现上：`worker/index.ts` 里是一个 Worker + 一个 `RoomsDurableObject`，规则引擎直接复用
+`src/engine` 与 `src/room/RoomManager`（已去掉 Node 依赖），HTTP/WS 接口与本地插件保持一致，
+所以网页牌桌（`/holdem-p2p/play`）两边通用。
+
+> 已知限制：Durable Object 里房间状态在内存中，长时间没人连接会被回收（和重启 dsh 一样，房间消失）；
+> 需要长期保存战绩可以后续接 D1 / R2。
+
 ## 叫人加入
 
 开房时插件会**自动起一条 cloudflared 临时隧道**（quick tunnel，不需要 Cloudflare 账号，

@@ -4,6 +4,7 @@ import { PACKAGE_NAME } from './invariant.ts'
 import { registerHoldemHttp } from './net/routes.ts'
 import { registerHoldemSocket } from './net/ws.ts'
 import { startLanProxy, type LanProxy } from './net/lan-proxy.ts'
+import { firstLanIPv4 } from './net/network.ts'
 import { QuickTunnel } from './net/tunnel.ts'
 import { createFileStore } from './persist/store.ts'
 import { RoomManager } from './room/RoomManager.ts'
@@ -26,6 +27,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
       }
     },
     store: createFileStore(),
+    lanIp: firstLanIPv4,
   })
 
   const tunnel = new QuickTunnel(`http://127.0.0.1:${ctx.webServer.port}`, `${resolved.routePrefix}/api/ready`, (message) => {

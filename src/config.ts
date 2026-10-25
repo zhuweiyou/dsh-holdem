@@ -1,4 +1,5 @@
 import z from '@deepseek-ai/schemastery'
+import { validatePublicBaseUrl as checkPublicBaseUrl } from './net/url.ts'
 import {
   BLIND_LEVELS,
   MAX_ROOMS,
@@ -59,23 +60,7 @@ export interface ResolvedConfig {
   routePrefix: string
 }
 
-export function validatePublicBaseUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, '')
-  if (trimmed === '') return ''
-  let parsed: URL
-  try {
-    parsed = new URL(trimmed)
-  } catch {
-    throw new Error('publicBaseUrl 必须是绝对 http(s) 地址')
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('publicBaseUrl 必须是 http 或 https')
-  }
-  if (parsed.origin !== trimmed) {
-    throw new Error('publicBaseUrl 只能是一个 origin，不能带路径、查询或末尾斜杠')
-  }
-  return parsed.origin
-}
+export { validatePublicBaseUrl } from './net/url.ts'
 
 export function normalizePrefix(prefix: string): string {
   const trimmed = prefix.trim()
@@ -92,7 +77,7 @@ export function resolveConfig(config: PluginConfig): ResolvedConfig {
   const autoAdvanceSec = clamp(config.autoAdvanceSec ?? 6, 2, 30)
   return {
     enabled: config.enabled !== false,
-    publicBaseUrl: validatePublicBaseUrl(config.publicBaseUrl ?? ''),
+    publicBaseUrl: checkPublicBaseUrl(config.publicBaseUrl ?? ''),
     autoTunnel: config.autoTunnel === true,
     blindLevel: blinds.id,
     sb: blinds.sb,
