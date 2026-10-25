@@ -37,6 +37,10 @@ tests/              引擎、房间、路由、局域网代理、样式一致性
 - 变更请求必须带 `x-requested-with`（跨源页面无法伪造，等于 CSRF token）。
 - Origin 只接受回环地址与私有网段（RFC1918）；CORS 也只对这两类 origin 放开。
 - 建房、Cloudflare 授权/部署这类"本机特权"操作还额外要求回环 Host + 回环来源。
+- 实时通道**不协商子协议**：Worker 的 Durable Object 没法在 101 响应里回
+  `Sec-WebSocket-Protocol`，浏览器只要请求了子协议，握手就以 1006 失败。`ws.ts` 仍然兼容老客户端。
+- 在线状态 = 打开的实时通道 **或** `PRESENCE_TTL_MS`（20s）内有过 HTTP 请求
+  （`markConnected` 只管 socket；`view()`/`command()` 都会 `touch`）。所以轮询时不会显示成离线。
 
 ## 云授权/部署
 

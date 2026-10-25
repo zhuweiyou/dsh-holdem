@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { PlayerView, SeatView, TableAction } from '../types.ts'
+import type { LegalActions, PlayerView, SeatView, TableAction } from '../types.ts'
 import { ActionBar } from './ActionBar.tsx'
 import { InviteSheet } from './InviteSheet.tsx'
 import { CardBack, CardSlot, CardView } from './CardView.tsx'
@@ -17,7 +17,8 @@ export function Table({ view }: { view: PlayerView }) {
   const hand = view.hand
   const room = view.room
   const youSeat = view.you.seat
-  const actor = view.you.canAct && view.you.legal ? t('table.yourTurn') : actorLabel(view)
+  const acting = view.you.canAct && view.you.legal !== null
+  const actor = acting ? t('table.yourTurn') : actorLabel(view)
 
   const secondsLeft = useCountdown(hand?.deadlineAt ?? null)
   const nextHandSeconds = useCountdown(room.nextHandAt)
@@ -243,41 +244,49 @@ export function Table({ view }: { view: PlayerView }) {
                     <span className={view.you.netChips >= 0 ? css.netUp : css.netDown}>{signedChips(view.you.netChips)}</span>
                   </div>
                 </div>
-                {view.you.canAct && view.you.legal ? (
-                  <ActionBar
-                    legal={view.you.legal}
-                    potTotal={hand?.potTotal ?? 0}
-                    bigBlind={room.settings.bb}
-                    busy={state.busy}
-                    secondsLeft={secondsLeft}
-                    onAction={act}
-                  />
-                ) : (
-                  <div className={css.ownHint}>
-                    <span>
-                      {room.phase === 'hand' && hand
-                        ? actor
-                        : room.phase === 'handOver'
-                          ? t('table.paused')
-                          : t('table.waiting')}
-                    </span>
-                    {room.phase === 'lobby' ? (
-                      <div className={css.ownButtons}>
-                        <button
-                          type="button"
-                          className={cx(css.btn, css.btnOutline)}
-                          disabled={state.busy}
-                          onClick={() => void runCommand({ type: 'ready', ready: !view.you.ready })}
-                        >
-                          {view.you.ready ? t('table.unready') : t('table.ready')}
-                        </button>
-                        <button type="button" className={cx(css.btn, css.btnGhost)} disabled={state.busy} onClick={() => void runCommand({ type: 'stand' })}>
-                          {t('table.stand')}
-                        </button>
-                      </div>
-                    ) : null}
+                {/*
+                  两条内容叠在同一格里：行动条无论轮不轮到你都在，下注区高度因此恒定。
+                  以前只有轮到自己才挂行动条，它比「等待/准备」那条高一大截，牌桌会被顶上去。
+                */}
+                <div className={css.ownActions}>
+                  <div className={cx(css.ownSlot, !acting && css.ownSlotHidden)} aria-hidden={!acting}>
+                    <ActionBar
+                      legal={view.you.legal ?? IDLE_LEGAL}
+                      potTotal={hand?.potTotal ?? 0}
+                      bigBlind={room.settings.bb}
+                      busy={state.busy}
+                      active={acting}
+                      secondsLeft={acting ? secondsLeft : null}
+                      onAction={act}
+                    />
                   </div>
-                )}
+                  <div className={cx(css.ownSlot, acting && css.ownSlotHidden)} aria-hidden={acting}>
+                    <div className={css.ownHint}>
+                      <span>
+                        {room.phase === 'hand' && hand
+                          ? actor
+                          : room.phase === 'handOver'
+                            ? t('table.paused')
+                            : t('table.waiting')}
+                      </span>
+                      {room.phase === 'lobby' ? (
+                        <div className={css.ownButtons}>
+                          <button
+                            type="button"
+                            className={cx(css.btn, css.btnOutline)}
+                            disabled={state.busy}
+                            onClick={() => void runCommand({ type: 'ready', ready: !view.you.ready })}
+                          >
+                            {view.you.ready ? t('table.unready') : t('table.ready')}
+                          </button>
+                          <button type="button" className={cx(css.btn, css.btnGhost)} disabled={state.busy} onClick={() => void runCommand({ type: 'stand' })}>
+                            {t('table.stand')}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -296,6 +305,22 @@ export function Table({ view }: { view: PlayerView }) {
 }
 
 const RAIL_KEY = 'holdem:rail'
+
+/**
+ * 轮不到你的时候行动条只是「占位」（`active: false`），这组数值只为撑住高度，
+ * 真实操作一律以服务端下发的 `LegalActions` 为准。
+ */
+const IDLE_LEGAL: LegalActions = {
+  canFold: false,
+  canCheck: false,
+  canCall: false,
+  callAmount: 0,
+  canRaise: true,
+  minRaiseTo: 0,
+  maxRaiseTo: 0,
+  canAllIn: false,
+  allInTo: 0,
+}
 
 function readRailPref(): boolean {
   try {

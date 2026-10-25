@@ -23,6 +23,8 @@ export const WS_TICKET_TTL_MS = 60_000
 export const SESSION_TTL_MS = 24 * 60 * 60 * 1000
 export const HEARTBEAT_MS = 15_000
 export const DISCONNECT_AFTER_MS = 45_000
+/** 没有实时通道时，HTTP 请求也算「人在」：这么久没动静才标成离线。 */
+export const PRESENCE_TTL_MS = 20_000
 export const LOBBY_KICK_IDLE_MS = 10 * 60 * 1000
 export const CHAT_COOLDOWN_MS = 1200
 export const ACTION_RATE_WINDOW_MS = 10_000

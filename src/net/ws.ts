@@ -31,7 +31,9 @@ function traceWs(line: Record<string, unknown>): void {
 export function registerHoldemSocket(server: WebServer, manager: RoomManager): () => void {
   const wss = new WebSocketServer({
     noServer: true,
-    handleProtocols: (protocols) => (protocols.has(SUBPROTOCOL) ? SUBPROTOCOL : false),
+    // 客户端现在不请求子协议（Worker 那边没法回 Sec-WebSocket-Protocol）；
+    // 老客户端请求了就照给，没请求/不认识就回空串＝不设这个头，但别掐握手。
+    handleProtocols: (protocols) => (protocols.has(SUBPROTOCOL) ? SUBPROTOCOL : ''),
   })
   const sockets = new Map<WebSocket, SocketState>()
 

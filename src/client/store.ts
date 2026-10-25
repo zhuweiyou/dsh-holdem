@@ -135,6 +135,13 @@ export function clearToast(): void {
 
 const BASE_KEY = 'holdem:api-base'
 
+/**
+ * 实时通道地址。
+ *
+ * 故意不带子协议：Cloudflare Worker 的 Durable Object 没法在 101 响应里回
+ * `Sec-WebSocket-Protocol`，浏览器只要请求了子协议，握手就会以 1006 失败，
+ * 于是玩家明明能操作（HTTP 正常）却一直显示「离线」。服务端两种都收。
+ */
 function wsUrl(ticket: string): string {
   const base = getApiBase()
   const url = base === '' ? new URL(location.href) : new URL(base)
@@ -209,7 +216,7 @@ function connectChannel(roomId: string, ticket: string): void {
   set({ connection: 'connecting' })
   let ws: WebSocket
   try {
-    ws = new WebSocket(wsUrl(ticket), 'holdem.v1')
+    ws = new WebSocket(wsUrl(ticket))
   } catch {
     set({ connection: 'polling' })
     startPolling(roomId)

@@ -216,6 +216,19 @@ describe('客户端渲染', () => {
     expect(html).toContain('正在准备牌桌')
   })
 
+  it('下注区永远挂着一条行动条：轮到自己时高度不会变', () => {
+    const lobby = renderToString(<Table view={view('lobby')} />)
+    const hand = renderToString(<Table view={view('hand')} />)
+    // 大厅阶段没人能操作，行动条也必须已经渲染出来（否则一进入自己的回合，
+    // 下注区突然长高，牌桌画面会被顶上去）
+    for (const html of [lobby, hand]) {
+      expect(html).toContain('弃牌')
+      expect(html).toContain('ownActions')
+      expect(html).toContain('ownSlot')
+    }
+    expect(lobby).toContain('取消准备')
+  })
+
   it('行动条按合法动作渲染', () => {
     const html = renderToString(
       <ActionBar

@@ -24,6 +24,7 @@ import {
   MAX_SPECTATORS,
   CHAT_COOLDOWN_MS,
   HAND_OVER_MIN_MS,
+  PRESENCE_TTL_MS,
   TICK_MS,
   SESSION_TTL_MS,
   blindsFor,
@@ -60,6 +61,10 @@ interface LivePlayer {
   seat: number | null
   ready: boolean
   connected: boolean
+  /** 当前有一条打开的实时通道（HTTP 轮询不算）。 */
+  socketOpen: boolean
+  /** 最近一次被观察到「人在」的时间：实时通道或 HTTP 请求都算。 */
+  lastSeenAt: number
   sittingOut: boolean
   autoFold: boolean
   timeoutStreak: number
@@ -356,8 +361,8 @@ export class RoomManager {
     if (cookieSession) {
       const player = room.players.get(cookieSession.playerId)
       if (player && !player.leaving) {
-        player.connected = true
         player.browserId = input.browserId ?? player.browserId
+        this.touch(room, player)
         return {
           playerId: player.playerId,
           roomId: room.roomId,
@@ -466,7 +471,9 @@ export class RoomManager {
   view(roomId: RoomId, playerId: PlayerId): PlayerView {
     const room = this.roomOf(playerId)
     if (!room || room.roomId !== roomId) throw new CommandError('auth', '不在这个房间里')
-    if (room.hostPlayerId === playerId) room.hostLastSeen = this.now()
+    // 能取到状态就说明人在：轮询（实时通道断掉时的退路）不该显示成离线
+    const player = room.players.get(playerId)
+    if (player) this.touch(room, player)
     return this.project(room, playerId)
   }
 
@@ -483,7 +490,7 @@ export class RoomManager {
     if (!room || room.roomId !== roomId) throw new CommandError('auth', '不在这个房间里')
     const player = room.players.get(playerId)
     if (!player || player.leaving) throw new CommandError('auth', '不在这个房间里')
-    if (room.hostPlayerId === playerId) room.hostLastSeen = this.now()
+    this.touch(room, player)
 
     if (command.type === 'ping') {
       return { seq: room.seq, view: this.project(room, playerId) }
@@ -632,13 +639,34 @@ export class RoomManager {
     return { playerId: entry.playerId, roomId: entry.roomId }
   }
 
+  /**
+   * 实时通道打开/关闭。
+   *
+   * 关掉 socket 不等于立刻离线：后台轮询（HTTP）还活着的话人还在。真正判离线交给
+   * `tick` 按 `PRESENCE_TTL_MS` 扫一遍，两边都没有动静才标成离线。
+   */
   markConnected(playerId: PlayerId, roomId: RoomId, connected: boolean): void {
     const room = this.rooms.get(roomId)
     const player = room?.players.get(playerId)
     if (!room || !player) return
-    if (room.hostPlayerId === playerId && connected) room.hostLastSeen = this.now()
-    if (player.connected === connected) return
-    player.connected = connected
+    player.socketOpen = connected
+    if (connected) player.lastSeenAt = this.now()
+    this.refreshPresence(room, player)
+  }
+
+  /** HTTP 请求也算心跳：轮询模式下不能把自己和别人都显示成离线。 */
+  private touch(room: LiveRoom, player: LivePlayer): void {
+    if (player.leaving) return
+    player.lastSeenAt = this.now()
+    if (room.hostPlayerId === player.playerId) room.hostLastSeen = player.lastSeenAt
+    this.refreshPresence(room, player)
+  }
+
+  /** 有实时通道，或者最近有 HTTP 动静，就算在线。 */
+  private refreshPresence(room: LiveRoom, player: LivePlayer): void {
+    const online = !player.leaving && (player.socketOpen || this.now() - player.lastSeenAt < PRESENCE_TTL_MS)
+    if (player.connected === online) return
+    player.connected = online
     this.publish(room)
   }
 
@@ -831,6 +859,7 @@ export class RoomManager {
       }
       for (const player of [...room.players.values()]) {
         if (player.leaving && room.phase !== 'hand') this.removePlayer(room, player.playerId)
+        else this.refreshPresence(room, player)
       }
     }
     this.cleanupSessions(now)
@@ -1000,6 +1029,8 @@ export class RoomManager {
       seat,
       ready: false,
       connected: true,
+      socketOpen: false,
+      lastSeenAt: this.now(),
       sittingOut: false,
       autoFold: false,
       timeoutStreak: 0,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '../../src/config.ts'
+import { PRESENCE_TTL_MS } from '../../src/invariant.ts'
 import { RoomManager, StaleCommandError } from '../../src/room/RoomManager.ts'
 import { noopStore } from '../../src/persist/store.ts'
 import type { ClientCommand, PlayerId, PlayerView, RoomId } from '../../src/types.ts'
@@ -198,6 +199,59 @@ describe('开局与行动', () => {
     expect(view.settlement!.players[0]!.rank).toBe(1)
     expect(view.settlement!.players.reduce((sum, player) => sum + player.netChips, 0)).toBe(0)
     expect(settled).toBeGreaterThan(0)
+  })
+})
+
+describe('在线状态', () => {
+  /** 用房主的视角读某个座位的在线标记（读房主视图不会刷新别人的心跳）。 */
+  function connectedOf(manager: RoomManager, host: { roomId: RoomId; hostPlayerId: PlayerId }, playerId: PlayerId): boolean {
+    const seat = manager.view(host.roomId, host.hostPlayerId).room.seats.find((entry) => entry.playerId === playerId)
+    return seat?.connected === true
+  }
+
+  it('实时通道断掉的瞬间不算离线，超过心跳窗口才算', () => {
+    const { manager, clock } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    const guest = manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '客人', local: true })
+
+    manager.markConnected(guest.playerId, guest.roomId, true)
+    expect(connectedOf(manager, host, guest.playerId)).toBe(true)
+
+    manager.markConnected(guest.playerId, guest.roomId, false)
+    clock.advance(PRESENCE_TTL_MS / 2)
+    manager.tick()
+    expect(connectedOf(manager, host, guest.playerId)).toBe(true)
+
+    clock.advance(PRESENCE_TTL_MS)
+    manager.tick()
+    expect(connectedOf(manager, host, guest.playerId)).toBe(false)
+  })
+
+  it('没有实时通道时，HTTP 轮询同样算在线', () => {
+    const { manager, clock } = setup()
+    const host = manager.createRoom({ displayName: '房主' })
+    const guest = manager.join({ roomCode: host.roomCode, role: 'sit', displayName: '轮询玩家', local: true })
+    // 新玩家还没连上实时通道，先按「刚到」算在线
+    manager.markConnected(guest.playerId, guest.roomId, false)
+    manager.tick()
+    expect(connectedOf(manager, host, guest.playerId)).toBe(true)
+
+    // 每秒轮询一次：一直在线
+    for (let i = 0; i < 10; i += 1) {
+      clock.advance(1000)
+      manager.view(guest.roomId, guest.playerId)
+      manager.tick()
+    }
+    expect(connectedOf(manager, host, guest.playerId)).toBe(true)
+
+    // 关掉标签页，没人再来取状态：窗口过后标成离线
+    clock.advance(PRESENCE_TTL_MS + 1)
+    manager.tick()
+    expect(connectedOf(manager, host, guest.playerId)).toBe(false)
+
+    // 回来继续轮询又能恢复在线
+    manager.view(guest.roomId, guest.playerId)
+    expect(connectedOf(manager, host, guest.playerId)).toBe(true)
   })
 })
 

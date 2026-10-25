@@ -1124,6 +1124,26 @@
   min-height: 92px;
 }
 
+/* 行动条与「等待/准备」两条内容叠在同一格里，谁高谁定高度——
+   于是轮到自己时下注区不会变高，牌桌画面也不会被顶上去 */
+.ownActions {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.ownSlot {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.ownSlotHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .ownCards {
   display: flex;
   align-items: center;
@@ -1199,6 +1219,12 @@
   flex-wrap: wrap;
 }
 
+/* 弃牌/跟注不许被加注区挤扁：按钮保持自身宽度，挤不下就让整行换行 */
+.actionRow > .btn {
+  flex: none;
+  white-space: nowrap;
+}
+
 .btnCall {
   border-color: var(--dsw-alias-brand-primary, #2f9c76);
   color: var(--dsw-alias-brand-primary, #2f9c76);
@@ -1223,35 +1249,46 @@
 }
 
 .raiseGroup {
-  flex: 1;
-  min-width: 240px;
+  /* flex-basis 归零：不然换行位置会看「加注到 12,500」这种文字的长短，
+     同一个宽度下高度飘，下注区又跳一下 */
+  flex: 1 1 0;
+  min-width: 200px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: 3px;
+  padding: 4px 8px;
   border-radius: 10px;
   background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.08));
-}
-
-.raiseHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 .raiseValue {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   font-size: 13px;
+  white-space: nowrap;
   color: var(--dsw-alias-label-primary, #e9ecf2);
 }
 
+/* 预设注额自己一行：换行只跟宽度走，跟金额文字长短无关，高度因此稳定 */
 .presetRow {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+}
+
+/* 金额 + 滑杆 + 加注按钮同一行：行动条矮一半，下注区就不会喧宾夺主 */
+.raiseSliderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.raiseSliderRow .slider {
+  flex: 1;
+  width: auto;
+  min-width: 80px;
 }
 
 .slider {
