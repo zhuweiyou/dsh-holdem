@@ -120,8 +120,9 @@ export class CloudflareDeployer {
         this.log = `${this.log}${text}`
         const match = OAUTH_PATTERN.exec(text)
         if (match && this.authorizeUrl === '') {
+          // wrangler login 自己会拉起浏览器；这里只把链接暴露给界面，
+          // 万一浏览器没弹出来，用户可以复制这条链接手动打开。
           this.authorizeUrl = match[0]
-          openInBrowser(this.authorizeUrl)
         }
       }
       child.stdout.on('data', onData)
@@ -186,13 +187,3 @@ export class CloudflareDeployer {
   }
 }
 
-/** 尽量帮你把授权页打开；打不开也没关系，界面上有可复制的链接。 */
-function openInBrowser(url: string): void {
-  const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open'
-  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url]
-  try {
-    spawn(command, args, { detached: true, stdio: 'ignore' }).unref()
-  } catch {
-    // 忽略
-  }
-}
