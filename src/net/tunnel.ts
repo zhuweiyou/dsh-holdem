@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { Tunnel, bin as packageBin, install, use } from 'cloudflared'
 
@@ -15,6 +16,33 @@ export interface TunnelStatus {
 }
 
 const URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i
+
+/**
+ * 用一个空的 --config，别去读 ~/.cloudflared/config.yml。
+ * 那份配置里通常写着别人的 named tunnel（tunnel:/ingress:），会干扰 quick tunnel 的注册与路由。
+ */
+/** cloudflared 的输出写到 ~/.dsh/holdem-p2p/tunnel.log，排查隧道问题用。 */
+function tunnelLog(line: string): void {
+  try {
+    const dir = join(homedir(), '.dsh', 'holdem-p2p')
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(join(dir, 'tunnel.log'), `${new Date().toISOString()} ${line}\n`)
+  } catch {
+    // 忽略
+  }
+}
+
+function isolatedConfigPath(): string {
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'holdem-tunnel-'))
+    const file = join(dir, 'config.yml')
+    // 有效的最小配置：既有内容（避免 empty 警告），又不带任何 named tunnel
+    writeFileSync(file, 'no-autoupdate: true\n')
+    return file
+  } catch {
+    return ''
+  }
+}
 
 function whichSync(name: string): string | undefined {
   const exts = process.platform === 'win32' ? (process.env.PATHEXT ?? '.EXE').split(';') : ['']
@@ -104,16 +132,20 @@ export class QuickTunnel {
     try {
       use(binary)
       // 这个包的 options 会把 key 原样拼进命令行，所以键名要自带 `--`
-      // http2 + 强制 IPv4：走代理（Clash 等）时比 QUIC 稳得多
-      const tunnel = Tunnel.quick(this.target, {
+      // http2 + 强制 IPv4：走代理/隧道时比 QUIC 稳得多
+      const configPath = isolatedConfigPath()
+      const options: Record<string, string | boolean> = {
         '--no-autoupdate': true,
         '--protocol': 'http2',
         '--edge-ip-version': '4',
-      })
+      }
+      if (configPath) options['--config'] = configPath
+      const tunnel = Tunnel.quick(this.target, options)
       this.tunnel = tunnel
 
       return await new Promise<TunnelStatus>((resolve) => {
         let settled = false
+        let recent = ''
         const finish = (status: TunnelStatus): void => {
           if (settled) return
           settled = true
@@ -132,6 +164,12 @@ export class QuickTunnel {
         if (typeof timer === 'object' && 'unref' in timer) timer.unref()
 
         const onOutput = (chunk: string): void => {
+          tunnelLog(chunk.trimEnd())
+          recent = (recent + chunk).slice(-4000)
+          if (/429|1015/.test(chunk) && this.status.state === 'starting') {
+            finish(this.fail('Cloudflare 正在限流（429），过几分钟再开一次'))
+            return
+          }
           const match = URL_PATTERN.exec(chunk)
           if (match) {
             finish({ state: 'on', url: match[0], target: this.target, error: '' })
@@ -149,6 +187,8 @@ export class QuickTunnel {
           this.tunnel = null
           if (this.status.state === 'on') {
             this.status = { state: 'off', url: '', target: this.target, error: `cloudflared 退出（code ${code ?? '?'}）` }
+          } else if (/429|1015/.test(recent)) {
+            finish(this.fail('Cloudflare 正在限流（429），过几分钟再开一次'))
           } else {
             finish(this.fail(`cloudflared 启动失败（code ${code ?? '?'}）`))
           }

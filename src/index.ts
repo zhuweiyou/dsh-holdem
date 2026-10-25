@@ -46,11 +46,6 @@ export function apply(ctx: Context, config: PluginConfig): void {
     const stopTick = manager.start()
     const disposeHttp = registerHoldemHttp(ctx.webServer, manager, tunnel)
     const disposeWs = registerHoldemSocket(ctx.webServer, manager)
-    if (resolved.autoTunnel) {
-      void tunnel.start().then((status) => {
-        if (status.state === 'on' && status.url) manager.setPublicBaseUrl(status.url)
-      })
-    }
     return () => {
       stopTick()
       disposeHttp()
