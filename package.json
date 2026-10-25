@@ -61,7 +61,8 @@
   },
   "dependencies": {
     "cloudflared": "^0.7.3",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "wrangler": "^4.152.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
@@ -87,8 +88,7 @@
     "react-dom": "^18.3.1",
     "tsdown": "^0.15.6",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4",
-    "wrangler": "^4.152.0"
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
