@@ -38,20 +38,7 @@ const stubCloudflare = {
 }
 
 let manager: RoomManager
-const stubTunnel = {
-  value: { state: 'off' as string, url: '', target: 'http://127.0.0.1:0', error: '' },
-  getStatus() {
-    return { ...this.value }
-  },
-  async start() {
-    this.value = { state: 'on', url: 'https://demo.trycloudflare.com', target: 'http://127.0.0.1:0', error: '' }
-    return this.value
-  },
-  stop() {
-    this.value = { state: 'off', url: '', target: 'http://127.0.0.1:0', error: '' }
-  },
-}
-let prefix = '/holdem-p2p'
+let prefix = '/holdem'
 
 beforeAll(async () => {
   manager = new RoomManager({
@@ -77,7 +64,7 @@ beforeAll(async () => {
       return () => undefined
     },
   }
-  registerHoldemHttp(fake, manager, stubTunnel, stubCloudflare)
+  registerHoldemHttp(fake, manager, stubCloudflare)
   server = createServer((req, res) => {
     const route = routes.find((entry) => (req.url ?? '').startsWith(entry.path))
     if (!route) {
@@ -100,7 +87,7 @@ afterAll(async () => {
 function headers(jar: Jar, extra: Record<string, string> = {}): Record<string, string> {
   return {
     origin: base,
-    'x-requested-with': 'dsh-holdem-p2p',
+    'x-requested-with': '@zhuweiyou/dsh-holdem',
     'content-type': 'application/json',
     ...(jar.cookie ? { cookie: jar.cookie } : {}),
     ...extra,
@@ -148,7 +135,7 @@ describe('HTTP 路由', () => {
   it('ready 与加入页可用', async () => {
     const ready = await call<{ ok: boolean; plugin: string }>(`${prefix}/api/ready`)
     expect(ready.status).toBe(200)
-    expect(ready.body.plugin).toBe('dsh-holdem-p2p')
+    expect(ready.body.plugin).toBe('@zhuweiyou/dsh-holdem')
 
     const page = await fetch(`${base}${prefix}/join?code=123456&invite=x&role=sit`)
     expect(page.status).toBe(200)
@@ -294,37 +281,6 @@ describe('HTTP 路由', () => {
     const sessionBody = (await session.json()) as { inRoom: boolean }
     expect(sessionBody.inRoom).toBe(true)
     expect(bare.cookie).toBeUndefined()
-  })
-
-  it('内置隧道接口能开能关，并把 publicBaseUrl 换成公网地址', async () => {
-    const jar: Jar = {}
-    const created = await call<{ roomCode: string; shareable: boolean; joinUrl: string }>(`${prefix}/api/rooms`, {
-      method: 'POST',
-      body: { title: '隧道桌', displayName: '房主' },
-      jar,
-    })
-    expect(created.body.shareable).toBe(false)
-    expect(created.body.joinUrl.startsWith('http://127.0.0.1')).toBe(true)
-
-    const off = await call<{ state: string }>(`${prefix}/api/tunnel`, { jar })
-    expect(off.body.state).toBe('off')
-
-    const started = await call<{ state: string; url: string }>(`${prefix}/api/tunnel?action=start`, {
-      method: 'POST',
-      body: {},
-      jar,
-    })
-    expect(started.status).toBe(200)
-    await new Promise((resolve) => setTimeout(resolve, 20))
-
-    const room = await call<{ view: { room: { shareable: boolean; joinUrl: string } } }>(`${prefix}/api/session`, { jar })
-    expect(room.body.view.room.shareable).toBe(true)
-    expect(room.body.view.room.joinUrl.startsWith('https://demo.trycloudflare.com')).toBe(true)
-
-    const stopped = await call<{ state: string }>(`${prefix}/api/tunnel?action=stop`, { method: 'POST', body: {}, jar })
-    expect(stopped.body.state).toBe('off')
-    const after = await call<{ view: { room: { shareable: boolean } } }>(`${prefix}/api/session`, { jar })
-    expect(after.body.view.room.shareable).toBe(false)
   })
 
   it('Cloudflare 授权：能开始、能取消、能换账号', async () => {

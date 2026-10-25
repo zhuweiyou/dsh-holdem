@@ -1,7 +1,7 @@
 import type { UserConfig } from 'tsdown'
 
 const config: UserConfig = {
-  name: 'dsh-holdem-p2p',
+  name: '@zhuweiyou/dsh-holdem',
   entry: {
     index: 'src/index.ts',
   },

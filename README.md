@@ -1,126 +1,57 @@
-# dsh-holdem-p2p
+# 德州扑克 · dsh-holdem
 
-点对点无限注德州扑克：**房主进程就是服务端**，没有中心服务器。6 人桌，坐满后自动观战，
-一手接一手地打，房主决定解散时弹出整场结算与多局排行榜。
+DeepSeek Harness 的德州扑克面板插件：6 人无限注德州，超员自动观战，多局累计排行榜。
 
-- 每手 100BB 带入、筹码重置，累计净赢进入排行榜（现金桌玩法）
-- 支持加注/再加注、短筹码全下、多层边池、平局均分、未跟注退回
-- 超时自动过牌/弃牌，连续超时进入托管
-- 观战者看不到任何未亮出的底牌，有人离座后可以补位
-- 断线重连、刷新回到原牌桌；WS 断了自动降级为轮询
-- 结算是本机娱乐筹码，**与 DeepSeek 余额无关**
+牌桌有两种跑法，建房时选一个：
+
+| 开桌位置 | 说明 |
+| --- | --- |
+| **公网 · Cloudflare**（默认） | 牌桌跑在 Cloudflare Worker + Durable Object 上，**关掉你的电脑也能玩**。点一次「授权 Cloudflare」→ 自动部署，地址自动拿到 |
+| **本机** | 牌桌跑在你自己的 dsh 进程里，同一 Wi-Fi 的朋友用局域网链接加入 |
+
+加入牌桌**只认邀请链接**：链接里带着房号、邀请凭证和这桌在哪里（本机 / 局域网 / Cloudflare），
+把链接发给朋友，用浏览器打开就能玩——对方不需要安装这个插件。
 
 ## 安装
 
-本机开发/自用（profile 换成你实际用的那个）：
-
 ```sh
-dsh plugin --profile desktop add link:/绝对路径/dsh-holdem-p2p
+dsh plugin --profile desktop add @zhuweiyou/dsh-holdem
 ```
 
-或从源码安装：
+装完刷新页面，「德州扑克」图标会出现在侧栏面板栏里。
 
-```sh
-pnpm install && pnpm build
-dsh plugin --profile desktop add /绝对路径/dsh-holdem-p2p
-```
-
-装完刷新页面；「德州扑克」图标会出现在侧栏面板栏里。
+> 公网模式需要本机有 `wrangler`（插件已作为依赖带上，无需全局安装）；第一次授权会打开浏览器，
+> 也可以复制面板里给出的授权链接手动打开。
 
 ## 怎么玩
 
-1. 点侧栏的德州扑克图标，在「创建房间」里填昵称、房间名、盲注，开一桌。
-2. 把邀请链接发给朋友（见下一节），或让朋友在本机填 6 位房号加入。
-3. 大家点「准备」，房主点「开始」。之后每手结束会自动开下一手。
-4. 房主点「解散并结算」，所有人进入本场结算：名次、手数、胜局、净赢、BB/100、摊牌胜率。
+1. 点侧栏的德州扑克图标 → 选「开桌位置」→ 填昵称、房间名、盲注 → 开一桌。
+2. 弹出来的邀请面板里复制链接，发给朋友。
+3. 大家「准备」，房主点「开始」；每手结束会自动开下一手。
+4. 房主点「解散并结算」（或离开）后，所有人看到本场结算：名次、手数、胜局、净赢、BB/100、摊牌胜率。
 
-房间规则：6 人上限；座位满后新来的人自动观战；观战者可以在等待阶段或有人离座时
-补位；一手进行中离开等于弃牌，本手结束后释放座位。
+房间规则：
 
-同一个浏览器可以开多个标签页各待在自己的房间：座位凭证按房间分开发放（`hdm_seat_<房间 id>`），
-新建或加入别的房间不会让原来那桌掉线；每个标签页也会记住自己的房间，刷新后回到原桌。
-
-## 界面
-
-![大厅](docs/screenshots/lobby.png)
-
-![牌桌](docs/screenshots/table.png)
-
-![加入房间](docs/screenshots/join.png)
-
-![邀请面板](docs/screenshots/invite.png)
-
-![本场结算](docs/screenshots/settlement.png)
-
-- 面板跟随宿主主题：浅色、深色共用一套 token；牌桌绿绒是固定配色。
-- 窗口窄于 900px 时牌桌自动切成列表式，结算横幅改回文档流，不会跑出牌桌外。
-- 点数与花色按牌面尺寸放大（md 22px / lg 28px），座位小牌 15px。
-
-## 开桌位置：本机 / Cloudflare
-
-建房表单里可以选「开桌位置」，这就是一个可扩展的后端抽象（`src/client/backends.ts`，加方案只要加一个条目）：
-
-| 方案 | 说明 |
-| --- | --- |
-| **公网 · Cloudflare**（默认） | 牌桌跑在 Cloudflare Worker + Durable Object 上，**关掉你的电脑也能玩**。点「授权 Cloudflare」→ 浏览器授权 → 一键部署，地址自动拿到 |
-| **本机** | 牌桌跑在你自己的 dsh 里；同一 Wi-Fi 用局域网链接，公网链接取决于隧道 |
-
-加入牌桌**只认邀请链接**：链接里带着房号、邀请 token，以及这桌在哪（本机 / 局域网 / Cloudflare），
-所以没有「填房号加入」这回事——把链接发过去就行。
-
-### 部署自己的 Cloudflare 牌桌（一次性）
-
-```sh
-# 1. 第一次需要浏览器授权（wrangler login 会弹 Cloudflare 同意页），或者用 API Token：
-export CLOUDFLARE_API_TOKEN=...        # 至少 Workers Scripts:Edit + Durable Objects:Edit
-
-# 2. 部署（Durable Object 用的是 SQLite 存储，免费计划即可）
-pnpm worker:deploy
-
-# 3. 本地调试（可选）
-pnpm worker:dev                        # http://127.0.0.1:8787
-```
-
-部署完会得到类似 `https://dsh-holdem-p2p.<你的账号>.workers.dev` 的地址：
-把它填进建房表单的「Cloudflare」那一栏，之后建房、邀请链接、网页牌桌全部由 Worker 提供，
-和你本机开不开 dsh 无关。
-
-实现上：`worker/index.ts` 里是一个 Worker + 一个 `RoomsDurableObject`，规则引擎直接复用
-`src/engine` 与 `src/room/RoomManager`（已去掉 Node 依赖），HTTP/WS 接口与本地插件保持一致，
-所以网页牌桌（`/holdem-p2p/play`）两边通用。
-
-> 已知限制：Durable Object 里房间状态在内存中，长时间没人连接会被回收（和重启 dsh 一样，房间消失）；
-> 需要长期保存战绩可以后续接 D1 / R2。
-
-## 叫人加入
-
-开房时插件会**自动起一条 cloudflared 临时隧道**（quick tunnel，不需要 Cloudflare 账号，
-也不用配任何东西），拿到 `https://xxx.trycloudflare.com` 之后，房间的邀请链接就是这个公网地址。
-点右上角「邀请好友」，入座/观战链接直接复制发过去即可——对方在浏览器里就能玩，
-**不需要装 DSH、也不需要装本插件**（牌桌是插件自己发的独立网页）。
-
-- 隧道随时可以在邀请面板里关掉/重开（关掉后链接退回 `127.0.0.1`）。
-- 第一次拉起会用到 `cloudflared`：优先用 PATH 里的，其次用 npm 依赖自带的，都没有才会下载一次。
-- 如果本机有代理/网络策略，确保 `*.trycloudflare.com` 能直连，否则这条链接在别的设备上打不开。
-- 想固定域名/自建隧道：把 `publicBaseUrl` 配成你的地址即可覆盖自动生成的地址。
+- 6 人上限，坐满后新来的人自动观战；观战者可以在等待阶段补位。
+- 一手进行中离开等于弃牌，**这手牌会照常打完**，只是不再开新局。
+- 每个行动 30 秒（可调 15–90 秒），超时自动过牌/弃牌；连续三次超时进入托管。
+- 有人掉线不影响其他人：轮到他会照常走计时，回来还能接上原来的座位和牌。
+- 房主离开或失联（默认 10 分钟）会结算整场。
 
 ## 设置
 
-`Settings → Plugins → dsh-holdem-p2p`（由插件 Config 自动生成）：
+`Settings → Plugins → 德州扑克`：
 
 | 字段 | 说明 | 默认 |
 | --- | --- | --- |
-| `publicBaseUrl` | 对外地址（纯 origin），空则只能本机加入 | 空 |
 | `defaultBlindLevel` | 新房间的默认盲注档位 | `25/50` |
 | `turnTimeoutSec` | 每个行动的时限（15–90 秒） | 30 |
 | `autoAdvanceSec` | 一手结束后自动开下一手（2–30 秒） | 6 |
 | `allowSpectators` | 是否允许观战 | 开 |
 | `chatEnabled` | 是否允许桌边聊天 | 开 |
 | `maxRooms` | 同时存在的房间上限 | 8 |
-| `hostIdleDissolveMin` | 房主失联多久后自动解散（分钟） | 10 |
-| `routePrefix` | HTTP 前缀 | `/holdem-p2p` |
-
-改完配置后重启 `dsh`（或等插件重新加载）才会作用于新房间。
+| `hostIdleDissolveMin` | 房主失联多久后自动结算（分钟） | 10 |
+| `routePrefix` | HTTP 前缀 | `/holdem` |
 
 ## 规则细节
 
@@ -131,38 +62,20 @@ pnpm worker:dev                        # http://127.0.0.1:8787
 - 奇数筹码从按钮左手第一个赢家开始逐个分配。
 - 全员全下时按 1.2 秒间隔逐街发完公共牌再摊牌。
 
-## 开发
-
-```sh
-pnpm install
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm verify        # typecheck + build + test
-```
-
-目录：
-
-```
-src/index.ts        Host apply：webServer 路由 + WS + 系统提示
-src/config.ts       Config（schemastery）与默认值
-src/engine/         纯规则：牌、牌型、下注、边池、单手状态机
-src/room/           房间状态机、代号/邀请、会话
-src/net/            HTTP 路由、WS、Origin/CSRF、邀请页
-src/persist/        手牌与会话的 JSONL 审计日志
-src/client/         React 面板（factory-CJS 产物）
-tests/              引擎、房间、路由、客户端渲染测试
-```
-
-- 规则只写在 `src/engine`，权威状态在 Host；客户端不裁定任何结果。
-- 换手牌后 `src/client` 需要 `pnpm build` 再刷新页面；改 Host 需要重挂插件或重启 `dsh`。
-
 ## 已知限制
 
-- 房主进程天然可信（能改自己的代码），本插件不承诺防作弊。
-- 不持久化在线会话：`dsh` 进程重启后房间消失，前端会回到大厅。
+- 房主进程天然可信（能改自己的代码），不承诺防作弊。
+- 牌桌状态在内存里：重启 dsh（本机模式）或 Durable Object 被回收（Cloudflare 模式）后房间消失。
 - 筹码是娱乐分，没有真实价值，也没有跨房间钱包。
 - 观战人数上限 16；房间上限见设置。
+
+## 界面
+
+![大厅](docs/screenshots/lobby.png)
+
+![牌桌](docs/screenshots/table.png)
+
+![本场结算](docs/screenshots/settlement.png)
 
 ## 许可证
 

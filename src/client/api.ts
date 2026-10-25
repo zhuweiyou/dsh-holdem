@@ -1,9 +1,9 @@
 import type { ClientCommand, PlayerView, RoomPreview, SessionSummary } from '../types.ts'
 
-export const PREFIX = '/holdem-p2p'
+export const PREFIX = '/holdem'
 const HEADERS = {
   'content-type': 'application/json',
-  'x-requested-with': 'dsh-holdem-p2p',
+  'x-requested-with': '@zhuweiyou/dsh-holdem',
 }
 
 /** 后端基址：'' = 当前 DSH 进程；也可以指到 Cloudflare Worker 上。 */
@@ -62,7 +62,6 @@ export interface CreateRoomResponse {
   roomCode: string
   hostPlayerId: string
   joinUrl: string
-  shareable: boolean
   wsTicket: string
   sessionToken: string
   view: PlayerView
@@ -86,13 +85,6 @@ export interface CloudflareStatus {
   authorizeUrl: string
   error: string
   log: string
-}
-
-export interface TunnelStatus {
-  state: 'off' | 'starting' | 'on' | 'error'
-  url: string
-  target: string
-  error: string
 }
 
 export interface SessionResponse {
@@ -156,18 +148,6 @@ export const api = {
   },
   cloudflareAction(action: 'login' | 'deploy' | 'cancel' | 'logout') {
     return request<CloudflareStatus>(`/api/cloudflare?action=${action}`, { method: 'POST', body: '{}' })
-  },
-  tunnel() {
-    return request<TunnelStatus>('/api/tunnel')
-  },
-  tunnelStart() {
-    return request<TunnelStatus>('/api/tunnel?action=start', { method: 'POST', body: '{}' })
-  },
-  tunnelStop() {
-    return request<TunnelStatus>('/api/tunnel?action=stop', { method: 'POST', body: '{}' })
-  },
-  ready() {
-    return request<{ ok: boolean; plugin: string; shareable: boolean }>('/api/ready')
   },
 }
 

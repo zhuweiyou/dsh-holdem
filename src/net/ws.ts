@@ -20,7 +20,7 @@ interface SocketState {
 /** 临时诊断日志：WS 升级成功/失败都记一条。 */
 function traceWs(line: Record<string, unknown>): void {
   try {
-    const dir = join(homedir(), '.dsh', 'holdem-p2p')
+    const dir = join(homedir(), '.dsh', 'holdem')
     mkdirSync(dir, { recursive: true })
     appendFileSync(join(dir, 'debug.jsonl'), JSON.stringify({ at: new Date().toISOString(), ws: true, ...line }) + '\n')
   } catch {
@@ -58,7 +58,7 @@ export function registerHoldemSocket(server: WebServer, manager: RoomManager): (
     path: `${manager.getConfig().routePrefix}/ws`,
     handler: (req, socket, head) => {
       try {
-        assertOrigin(req as IncomingMessage, manager.getConfig().publicBaseUrl)
+        assertOrigin(req as IncomingMessage)
       } catch (error) {
         traceWs({ outcome: 'reject-origin', origin: req.headers.origin ?? null, host: req.headers.host ?? null, message: String(error) })
         reject(socket, '403 Forbidden')

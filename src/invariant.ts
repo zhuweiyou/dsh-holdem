@@ -1,10 +1,10 @@
 /** 全局常量：协议、上限、时间与筹码档位。 */
 
-export const PACKAGE_NAME = 'dsh-holdem-p2p'
-export const CLIENT_ID = 'dsh-holdem-p2p'
-export const PANEL_KEY = 'holdem-p2p'
-export const SUBPROTOCOL = 'holdem-p2p.v1'
-export const ROUTE_PREFIX = '/holdem-p2p'
+export const PACKAGE_NAME = '@zhuweiyou/dsh-holdem'
+export const CLIENT_ID = '@zhuweiyou/dsh-holdem'
+export const PANEL_KEY = 'holdem'
+export const SUBPROTOCOL = 'holdem.v1'
+export const ROUTE_PREFIX = '/holdem'
 
 export const MAX_SEATS = 6
 export const MAX_SPECTATORS = 16

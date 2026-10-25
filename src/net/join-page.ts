@@ -3,7 +3,6 @@ export interface JoinPageOptions {
   code: string
   invite: string
   role: 'auto' | 'sit' | 'watch'
-  shareable: boolean
 }
 
 /**
@@ -47,7 +46,7 @@ export function joinPageHtml(options: JoinPageOptions): string {
 <body>
 <div class="card">
   <h1>加入德州扑克牌桌</h1>
-  <div class="meta">房主即服务端 · 点对点 · 娱乐筹码</div>
+  <div class="meta">娱乐筹码 · 邀请链接直接进桌</div>
   <div class="code">${escapeHtml(options.code)}</div>
   <div class="info">
     <div class="row"><span class="k">房间</span><span id="title">读取中…</span></div>

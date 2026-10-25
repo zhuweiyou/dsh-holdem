@@ -186,7 +186,7 @@ export function playPageHtml(options: PlayPageOptions): string {
 <script>
 (function () {
   var body = document.body
-  var prefix = body.dataset.prefix || '/holdem-p2p'
+  var prefix = body.dataset.prefix || '/holdem'
   var code = body.dataset.code || ''
   var invite = body.dataset.invite || ''
   var preferWatch = body.dataset.role === 'watch'
@@ -257,7 +257,7 @@ export function playPageHtml(options: PlayPageOptions): string {
   }
 
   function headers(extra) {
-    var out = { 'content-type': 'application/json', 'x-requested-with': 'dsh-holdem-p2p' }
+    var out = { 'content-type': 'application/json', 'x-requested-with': '@zhuweiyou/dsh-holdem' }
     if (state.token) out['x-holdem-seat'] = state.token
     if (extra) for (var key in extra) out[key] = extra[key]
     return out

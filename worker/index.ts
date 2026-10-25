@@ -2,7 +2,7 @@
  * Cloudflare Worker + Durable Object 版牌桌服务。
  *
  * 目的：把「房主进程即服务端」换成「Cloudflare 上的一个房间服务器」，
- * 别人用浏览器打开 Worker 的地址就能玩，不依赖你本机开着 dsh / cloudflared。
+ * 别人用浏览器打开 Worker 的地址就能玩，不依赖你本机开着 dsh。
  *
  * - 规则引擎与房间状态机直接复用 src/engine + src/room/RoomManager（纯逻辑，无 node 依赖）
  * - 所有房间放在一个 Durable Object 里（6 人桌的小场景足够），WS 连接也由它持有
@@ -15,7 +15,7 @@ import { joinPageHtml } from '../src/net/join-page.ts'
 import { playPageHtml } from '../src/net/play-page.ts'
 import type { ClientCommand, PlayerView, RoomId } from '../src/types.ts'
 
-const PREFIX = '/holdem-p2p'
+const PREFIX = '/holdem'
 const SEAT_HEADER = 'x-holdem-seat'
 
 export interface Env {
@@ -42,7 +42,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
     if (!url.pathname.startsWith(PREFIX)) {
-      return new Response('dsh-holdem-p2p worker: try /holdem-p2p/play?code=…', { status: 404 })
+      return new Response('@zhuweiyou/dsh-holdem worker: try /holdem/play?code=…', { status: 404 })
     }
     const origin = request.headers.get('origin')
     // WebSocket 升级不走 CORS，原样转发（带 webSocket 的 Response 不能重建）
@@ -101,7 +101,7 @@ export class RoomsDurableObject {
   private origin = 'https://holdem-worker.local'
 
   constructor(_state: DurableObjectState, env: Env) {
-    const overrides: Record<string, unknown> = { publicBaseUrl: '', autoTunnel: false }
+    const overrides: Record<string, unknown> = {}
     if (env.MAX_ROOMS) overrides.maxRooms = Number(env.MAX_ROOMS)
     const config = resolveConfig(overrides as never)
     this.manager = new RoomManager({
@@ -135,11 +135,8 @@ export class RoomsDurableObject {
   async fetch(request: Request): Promise<Response> {
     void this.timer
     const url = new URL(request.url)
-    // 房间的对外地址就是 Worker 自己：邀请链接、shareable 都按它算
-    if (this.origin !== url.origin) {
-      this.origin = url.origin
-      this.manager.setPublicBaseUrl(url.origin)
-    }
+    // 房间的对外地址就是 Worker 自己：邀请链接按它算
+    if (this.origin !== url.origin) this.origin = url.origin
     try {
       return await this.route(request, url)
     } catch (error) {
@@ -160,7 +157,6 @@ export class RoomsDurableObject {
         code: String(url.searchParams.get('code') ?? ''),
         invite: String(url.searchParams.get('invite') ?? ''),
         role: url.searchParams.get('role') === 'watch' ? 'watch' : 'auto',
-        shareable: true,
       }))
     }
     if (request.method === 'GET' && path === '/play') {
@@ -173,10 +169,7 @@ export class RoomsDurableObject {
       }))
     }
     if (request.method === 'GET' && path === '/api/ready') {
-      return json({ ok: true, plugin: 'dsh-holdem-p2p', shareable: true, turnTimeoutMs: this.manager.getConfig().turnTimeoutMs, worker: true })
-    }
-    if (request.method === 'GET' && path === '/api/tunnel') {
-      return json({ state: 'off', url: '', target: '', error: '' })
+      return json({ ok: true, plugin: '@zhuweiyou/dsh-holdem', turnTimeoutMs: this.manager.getConfig().turnTimeoutMs, worker: true })
     }
     if (request.method === 'GET' && path === '/api/session') {
       const session = sessionOf(this.manager, request, url.searchParams.get('roomId') ?? undefined)
@@ -200,7 +193,6 @@ export class RoomsDurableObject {
         roomCode: created.roomCode,
         hostPlayerId: created.hostPlayerId,
         joinUrl: created.joinUrl,
-        shareable: true,
         wsTicket: created.wsTicket,
         sessionToken: created.sessionToken,
         view: created.view,

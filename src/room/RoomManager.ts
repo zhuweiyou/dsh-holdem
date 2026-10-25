@@ -1,5 +1,4 @@
 import type { ResolvedConfig } from '../config.ts'
-import { validatePublicBaseUrl } from '../net/url.ts'
 import type {
   ChatLine,
   ClientCommand,
@@ -149,7 +148,6 @@ export interface CreateRoomResult {
   roomCode: string
   hostPlayerId: PlayerId
   joinUrl: string
-  shareable: boolean
   wsTicket: string
   sessionToken: string
   view: PlayerView
@@ -207,17 +205,12 @@ export class RoomManager {
     return this.config
   }
 
-  /** 内置隧道拿到地址后，运行时把对外地址换掉（影响邀请链接与 shareable）。 */
+  /** 局域网小代理的端口（0 表示没起来）。 */
   private lanPort = 0
   private readonly lanIp: () => string
 
-  /** 局域网小代理的端口（0 表示没起来）。 */
   setLanPort(port: number): void {
     this.lanPort = port > 0 ? port : 0
-  }
-
-  setPublicBaseUrl(url: string): void {
-    this.config.publicBaseUrl = url.trim() === '' ? '' : validatePublicBaseUrl(url)
   }
 
   replaceConfig(config: ResolvedConfig): void {
@@ -309,14 +302,12 @@ export class RoomManager {
     this.counters.roomsCreated += 1
 
     const session = this.newSession(room, host.playerId, 'host')
-    const base = this.config.publicBaseUrl || this.origin()
-    const joinUrl = `${base}${this.config.routePrefix}/play?code=${code}&invite=${encodeURIComponent(sitToken)}&role=auto`
+    const joinUrl = this.joinUrlFor(room, sitToken)
     return {
       roomId,
       roomCode: code,
       hostPlayerId: host.playerId,
       joinUrl,
-      shareable: this.config.publicBaseUrl !== '',
       wsTicket: this.issueTicket(host.playerId, roomId),
       sessionToken: session.token,
       view: this.project(room, host.playerId),
@@ -417,13 +408,11 @@ export class RoomManager {
       this.dropSessionsOf(room, playerId)
       return
     }
-    if (room.hostPlayerId === playerId) {
-      this.dissolve(room, 'host-dissolved')
-      return
-    }
+    const isHost = room.hostPlayerId === playerId
     const player = room.players.get(playerId)
-    if (!player) return
-    if (room.phase === 'hand' && room.hand && !room.hand.completed && player.seat !== null) {
+
+    // 手牌进行中：不管是谁（包括房主）都先把这手打完，只弃掉自己的牌
+    if (player && room.phase === 'hand' && room.hand && !room.hand.completed && player.seat !== null) {
       foldSeat(room.hand, player.seat, this.now())
       player.leaving = true
       player.connected = false
@@ -432,6 +421,13 @@ export class RoomManager {
       else this.publish(room)
       return
     }
+
+    if (isHost) {
+      // 大厅/两手之间离开：没有手牌要保，直接结算
+      this.dissolve(room, 'host-dissolved')
+      return
+    }
+    if (!player) return
     this.removePlayer(room, playerId)
     this.publish(room)
   }
@@ -744,6 +740,12 @@ export class RoomManager {
   }
 
   private advance(room: LiveRoom, now: number): void {
+    const host = room.players.get(room.hostPlayerId)
+    if (!host || host.leaving) {
+      // 房主走了：这手照常算完，但不再开新局
+      this.dissolve(room, 'host-dissolved')
+      return
+    }
     const eligible = [...room.players.values()].filter(
       (player) => player.seat !== null && !player.sittingOut && !player.autoFold && !player.leaving,
     )
@@ -863,6 +865,11 @@ export class RoomManager {
     else this.publish(room)
   }
 
+  /** 本机地址兜底（拿不到局域网 IP 时用）。 */
+  private joinUrlFor(room: LiveRoom, token: string): string {
+    return `${this.origin()}${this.config.routePrefix}/play?code=${room.roomCode}&invite=${encodeURIComponent(token)}&role=auto`
+  }
+
   /** 同一局域网可直连的邀请链接；需要局域网代理在跑、而且拿得到网卡地址。 */
   private lanJoinUrl(room: LiveRoom): string {
     if (this.lanPort <= 0) return ''
@@ -939,8 +946,7 @@ export class RoomManager {
       createdAt: new Date(room.createdAt).toISOString(),
       nextHandAt: room.handOverAt === null ? null : new Date(room.handOverAt).toISOString(),
       seq: room.seq,
-      shareable: this.config.publicBaseUrl !== '',
-      joinUrl: `${this.config.publicBaseUrl || this.origin()}${this.config.routePrefix}/play?code=${room.roomCode}&invite=${encodeURIComponent(room.sitToken)}&role=auto`,
+      joinUrl: this.lanJoinUrl(room) || this.joinUrlFor(room, room.sitToken),
       lanUrl: this.lanJoinUrl(room),
     }
 

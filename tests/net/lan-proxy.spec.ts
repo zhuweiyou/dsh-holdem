@@ -8,7 +8,7 @@ import { startLanProxy, type LanProxy } from '../../src/net/lan-proxy.ts'
 import { isLoopbackHost, isPrivateOrigin } from '../../src/net/auth.ts'
 import { noopStore } from '../../src/persist/store.ts'
 
-const prefix = '/holdem-p2p'
+const prefix = '/holdem'
 let target: Server
 let targetPort = 0
 let proxy: LanProxy | null = null
@@ -68,7 +68,7 @@ describe('局域网小代理', () => {
 
     const ready = await fetch(`${base}${prefix}/api/ready`)
     expect(ready.status).toBe(200)
-    expect(((await ready.json()) as { plugin: string }).plugin).toBe('dsh-holdem-p2p')
+    expect(((await ready.json()) as { plugin: string }).plugin).toBe('@zhuweiyou/dsh-holdem')
 
     const play = await fetch(`${base}${prefix}/play?code=123456&invite=x&role=auto`)
     expect(play.status).toBe(200)
@@ -92,7 +92,7 @@ describe('局域网小代理', () => {
       headers: {
         origin: `http://192.168.0.103:${proxy!.port}`,
         'content-type': 'application/json',
-        'x-requested-with': 'dsh-holdem-p2p',
+        'x-requested-with': '@zhuweiyou/dsh-holdem',
       },
       body: JSON.stringify({ roomCode: created.roomCode, invite, displayName: '局域网小伙伴', role: 'sit' }),
     })

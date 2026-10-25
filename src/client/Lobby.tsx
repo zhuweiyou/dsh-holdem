@@ -8,7 +8,7 @@ import { clearDeepLink, parseDeepLink, rememberName, rememberedName } from './pr
 import { cx, formatChips } from './ui.ts'
 import css from './styles.module.css'
 
-const NPM_URL = 'https://www.npmjs.com/package/dsh-holdem-p2p'
+const NPM_URL = 'https://www.npmjs.com/package/@zhuweiyou/dsh-holdem'
 
 interface JoinLink {
   /** 请求要打到哪个 origin（'' = 当前 DSH 进程） */
@@ -34,7 +34,7 @@ function parseJoinLink(text: string): JoinLink | null {
 
 function readPref(key: string, fallback: string): string {
   try {
-    return localStorage.getItem(`holdem-p2p:${key}`) ?? fallback
+    return localStorage.getItem(`holdem:${key}`) ?? fallback
   } catch {
     return fallback
   }
@@ -42,7 +42,7 @@ function readPref(key: string, fallback: string): string {
 
 function writePref(key: string, value: string): void {
   try {
-    localStorage.setItem(`holdem-p2p:${key}`, value)
+    localStorage.setItem(`holdem:${key}`, value)
   } catch {
     // 忽略
   }
@@ -54,7 +54,7 @@ function buildLabel(): string {
   const stamp = date && !Number.isNaN(date.getTime())
     ? date.toLocaleTimeString(undefined, { hour12: false }).slice(0, 5)
     : ''
-  return stamp ? `dsh-holdem-p2p · build ${stamp}` : 'dsh-holdem-p2p · dev'
+  return stamp ? `@zhuweiyou/dsh-holdem · build ${stamp}` : '@zhuweiyou/dsh-holdem · dev'
 }
 
 export function Lobby() {
@@ -71,7 +71,7 @@ export function Lobby() {
     const query = new URLSearchParams({ code: deepLink.code, role: 'auto' })
     if (deepLink.invite) query.set('invite', deepLink.invite)
     const origin = typeof location === 'undefined' ? '' : location.origin
-    return `${origin}/holdem-p2p/play?${query.toString()}`
+    return `${origin}/holdem/play?${query.toString()}`
   })
   const [error, setError] = useState<string | null>(null)
 
@@ -235,7 +235,7 @@ export function Lobby() {
       <p className={css.hint}>
         {t('lobby.hintPrefix')}
         <a className={css.hintLink} href={NPM_URL} target="_blank" rel="noreferrer">
-          dsh-holdem-p2p
+          @zhuweiyou/dsh-holdem
         </a>
         {t('lobby.hintSuffix')}
       </p>

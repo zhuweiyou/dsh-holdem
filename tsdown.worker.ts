@@ -2,7 +2,7 @@ import type { UserConfig } from 'tsdown'
 
 /** Cloudflare Worker 产物：单文件 ESM，部署时由 wrangler 直接上传。 */
 const config: UserConfig = {
-  name: 'dsh-holdem-p2p/worker',
+  name: '@zhuweiyou/dsh-holdem/worker',
   entry: { worker: 'worker/index.ts' },
   outDir: 'lib',
   format: ['esm'],

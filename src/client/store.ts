@@ -44,8 +44,8 @@ let disposed = false
 restoreBackend()
 syncSeatTokens()
 
-const ROOM_KEY = 'holdem-p2p:room'
-const SEATS_KEY = 'holdem-p2p:seats'
+const ROOM_KEY = 'holdem:room'
+const SEATS_KEY = 'holdem:seats'
 
 /** 每个标签页自己保存每个房间的座位 token，并同步到请求头。 */
 function readSeats(): Record<string, string> {
@@ -133,13 +133,13 @@ export function clearToast(): void {
 
 // ------------------------------------------------------------------ 通道
 
-const BASE_KEY = 'holdem-p2p:api-base'
+const BASE_KEY = 'holdem:api-base'
 
 function wsUrl(ticket: string): string {
   const base = getApiBase()
   const url = base === '' ? new URL(location.href) : new URL(base)
   const protocol = url.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${url.host}/holdem-p2p/ws?ticket=${encodeURIComponent(ticket)}`
+  return `${protocol}://${url.host}/holdem/ws?ticket=${encodeURIComponent(ticket)}`
 }
 
 /** 切换后端（本机 / Cloudflare Worker），下一轮刷新也能回到同一处。 */
@@ -209,7 +209,7 @@ function connectChannel(roomId: string, ticket: string): void {
   set({ connection: 'connecting' })
   let ws: WebSocket
   try {
-    ws = new WebSocket(wsUrl(ticket), 'holdem-p2p.v1')
+    ws = new WebSocket(wsUrl(ticket), 'holdem.v1')
   } catch {
     set({ connection: 'polling' })
     startPolling(roomId)

@@ -1,5 +1,4 @@
 import z from '@deepseek-ai/schemastery'
-import { validatePublicBaseUrl as checkPublicBaseUrl } from './net/url.ts'
 import {
   BLIND_LEVELS,
   MAX_ROOMS,
@@ -12,10 +11,6 @@ import {
 
 export interface PluginConfig {
   enabled?: boolean
-  /** 对外可访问的 origin（如 Cloudflare Tunnel）；空则只有本机可加入。 */
-  publicBaseUrl?: string
-  /** 启动时自动开一条 cloudflared 临时隧道，把牌桌分享到公网。 */
-  autoTunnel?: boolean
   defaultBlindLevel?: string
   /** 每个行动时限，秒。 */
   turnTimeoutSec?: number
@@ -31,8 +26,6 @@ export interface PluginConfig {
 
 export const Config = z.object({
   enabled: z.boolean().default(true),
-  publicBaseUrl: z.string().default(''),
-  autoTunnel: z.boolean().default(true),
   defaultBlindLevel: z.string().default('25/50'),
   turnTimeoutSec: z.number().default(30).min(15).max(90),
   autoAdvanceSec: z.number().default(6).min(2).max(30),
@@ -45,8 +38,6 @@ export const Config = z.object({
 
 export interface ResolvedConfig {
   enabled: boolean
-  publicBaseUrl: string
-  autoTunnel: boolean
   blindLevel: BlindLevelId
   sb: number
   bb: number
@@ -59,8 +50,6 @@ export interface ResolvedConfig {
   hostIdleDissolveMs: number
   routePrefix: string
 }
-
-export { validatePublicBaseUrl } from './net/url.ts'
 
 export function normalizePrefix(prefix: string): string {
   const trimmed = prefix.trim()
@@ -77,8 +66,6 @@ export function resolveConfig(config: PluginConfig): ResolvedConfig {
   const autoAdvanceSec = clamp(config.autoAdvanceSec ?? 6, 2, 30)
   return {
     enabled: config.enabled !== false,
-    publicBaseUrl: checkPublicBaseUrl(config.publicBaseUrl ?? ''),
-    autoTunnel: config.autoTunnel === true,
     blindLevel: blinds.id,
     sb: blinds.sb,
     bb: blinds.bb,

@@ -8,7 +8,7 @@ export type { HandRecord, HoldemStore }
 
 export function storeRoot(): string {
   const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
-  return join(home, 'holdem-p2p')
+  return join(home, 'holdem')
 }
 
 /** 只追加的 JSONL 审计日志；任何失败都不影响牌局。 */

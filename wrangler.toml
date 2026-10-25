@@ -1,6 +1,6 @@
-# Cloudflare Worker + Durable Object：把牌桌服务端搬到云端，不再依赖本机 dsh/cloudflared。
+# Cloudflare Worker + Durable Object：把牌桌服务端搬到云端，不再依赖本机 dsh。
 # 部署：pnpm worker:deploy（第一次会要求 wrangler login 或提供 CLOUDFLARE_API_TOKEN）
-name = "dsh-holdem-p2p"
+name = "dsh-holdem"
 main = "lib/worker.js"
 compatibility_date = "2025-10-01"
 

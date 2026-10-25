@@ -6,7 +6,6 @@ import { registerHoldemSocket } from './net/ws.ts'
 import { CloudflareDeployer } from './net/cloudflare.ts'
 import { startLanProxy, type LanProxy } from './net/lan-proxy.ts'
 import { firstLanIPv4 } from './net/network.ts'
-import { QuickTunnel } from './net/tunnel.ts'
 import { createFileStore } from './persist/store.ts'
 import { RoomManager } from './room/RoomManager.ts'
 
@@ -31,10 +30,6 @@ export function apply(ctx: Context, config: PluginConfig): void {
     lanIp: firstLanIPv4,
   })
 
-  const tunnel = new QuickTunnel(`http://127.0.0.1:${ctx.webServer.port}`, `${resolved.routePrefix}/api/ready`, (message) => {
-    ctx.logger?.info?.(message)
-  })
-
   const cloudflare = new CloudflareDeployer()
 
   ctx.effect(() => {
@@ -49,27 +44,26 @@ export function apply(ctx: Context, config: PluginConfig): void {
     })
 
     const stopTick = manager.start()
-    const disposeHttp = registerHoldemHttp(ctx.webServer, manager, tunnel, cloudflare)
+    const disposeHttp = registerHoldemHttp(ctx.webServer, manager, cloudflare)
     const disposeWs = registerHoldemSocket(ctx.webServer, manager)
     return () => {
       stopTick()
       disposeHttp()
       disposeWs()
       lanProxy?.dispose()
-      tunnel.stop()
       cloudflare.dispose()
       void manager.dispose()
     }
-  }, 'holdem-p2p: room routes')
+  }, 'holdem: room routes')
 
   ctx.inject(['systemPrompt'], (promptCtx) => {
     promptCtx.systemPrompt?.section({
-      name: 'plugin:dsh-holdem-p2p',
+      name: 'plugin:@zhuweiyou/dsh-holdem',
       order: 200,
       text: [
-        '本机已安装 dsh-holdem-p2p（点对点德州扑克）。',
-        '开房与打牌都在侧栏的「德州扑克」面板里，房主进程即服务端，结算是本地娱乐筹码，不是 DeepSeek 余额。',
-        '加入需要对方也安装本插件；跨机分享要先把 publicBaseUrl 配成外面能访问到这台机器的地址。',
+        '本机已安装 @zhuweiyou/dsh-holdem（德州扑克）。',
+        '开房与打牌都在侧栏的「德州扑克」面板里；牌桌可以跑在本机（局域网分享），也可以跑在 Cloudflare Worker 上（公网分享）。',
+        '结算是本地娱乐筹码，不是 DeepSeek 余额；加入只需要房主发来的邀请链接。',
       ].join(''),
     })
   })

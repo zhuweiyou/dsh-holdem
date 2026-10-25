@@ -5,17 +5,12 @@ import { t } from './i18n.ts'
 import { copyText, cx } from './ui.ts'
 import css from './styles.module.css'
 
-/**
- * 邀请面板：一条链接 + 复制。
- * 选哪条链接由后端决定——Cloudflare 房间就是 Worker 地址，本机房间优先公网隧道，
- * 没有隧道就退回局域网地址。
- */
+/** 邀请面板：一条链接 + 复制。远端（Cloudflare / 别人机器）用 joinUrl，本机优先局域网地址。 */
 export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () => void }) {
   const room = view.room
   const [copied, setCopied] = useState(false)
   const remote = getApiBase() !== ''
-
-  const link = pickLink({ joinUrl: room.joinUrl, lanUrl: room.lanUrl, shareable: room.shareable, remote })
+  const link = remote ? room.joinUrl : room.lanUrl || room.joinUrl
 
   const copy = async (): Promise<void> => {
     if (!(await copyText(link))) return
@@ -32,7 +27,6 @@ export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () =
             {t('common.close')}
           </button>
         </header>
-
         <div className={css.inviteLinkRow}>
           <input
             className={css.inviteLinkInput}
@@ -48,10 +42,4 @@ export function InviteSheet({ view, onClose }: { view: PlayerView; onClose: () =
       </div>
     </div>
   )
-}
-
-function pickLink(input: { joinUrl: string; lanUrl: string; shareable: boolean; remote: boolean }): string {
-  if (input.remote) return input.joinUrl
-  if (input.shareable) return input.joinUrl
-  return input.lanUrl || input.joinUrl
 }

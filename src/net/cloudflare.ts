@@ -34,7 +34,7 @@ const WORKER_URL_PATTERN = /https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev/i
 
 function stateFile(): string {
   const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
-  return join(home, 'holdem-p2p', 'cloudflare.json')
+  return join(home, 'holdem', 'cloudflare.json')
 }
 
 function readStored(): StoredState {
@@ -83,36 +83,74 @@ function hasWranglerCredentials(): boolean {
 interface WranglerCommand {
   command: string
   baseArgs: string[]
+  env?: Record<string, string>
+  label: string
 }
 
 /**
- * 找 wrangler CLI：
+ * 找一套能跑起来的 wrangler 调用方式，并做一次 `--version` 探活：
  * 1. HOLDEM_WRANGLER 显式指定；
- * 2. 用 Node 直接跑依赖里的 wrangler.js（不依赖 PATH，也不依赖 .bin 软链，
- *    插件被装到别的 profile 里同样可用）；
- * 3. 兜底找插件目录的 .bin，再退到 PATH。
+ * 2. PATH 里的 node + 依赖里的 wrangler（正常情况，不依赖全局 wrangler）；
+ * 3. Electron 自带 Node 模式（用户机器上没装 Node 时）：
+ *    ELECTRON_RUN_AS_NODE=1 <Electron 可执行文件> wrangler/bin/wrangler.js；
+ * 4. 插件目录的 .bin/wrangler 软链；
+ * 5. PATH 里的全局 wrangler。
  */
-function wranglerCommand(): WranglerCommand {
+function wranglerCandidates(): WranglerCommand[] {
+  const candidates: WranglerCommand[] = []
   const custom = process.env.HOLDEM_WRANGLER
-  if (custom) return { command: custom, baseArgs: [] }
+  if (custom) candidates.push({ command: custom, baseArgs: [], label: `HOLDEM_WRANGLER=${custom}` })
+
+  let cli = ''
   try {
     const require = createRequire(import.meta.url)
-    // wrangler 的 exports 不暴露 bin/，只能先拿到 package.json 再拼路径
     const pkg = require.resolve('wrangler/package.json')
-    const cli = join(dirname(pkg), 'bin', 'wrangler.js')
-    if (existsSync(cli)) {
-      // 插件跑在 Electron 里时 process.execPath 是 Electron 本身，
-      // 直接拿它跑脚本会被当成 App 启动（wrangler 只会打印 help），所以优先真正的 node。
-      const node = whichSync('node')
-      if (node) return { command: node, baseArgs: [cli] }
-      if (!process.versions.electron) return { command: process.execPath, baseArgs: [cli] }
-    }
+    const candidate = join(dirname(pkg), 'bin', 'wrangler.js')
+    if (existsSync(candidate)) cli = candidate
   } catch {
-    // 继续尝试本地 .bin
+    // 依赖里没有 wrangler
   }
-  const local = join(packageRoot(), 'node_modules', '.bin', 'wrangler')
-  if (existsSync(local)) return { command: local, baseArgs: [] }
-  return { command: 'wrangler', baseArgs: [] }
+
+  if (cli) {
+    const node = whichSync('node')
+    if (node) candidates.push({ command: node, baseArgs: [cli], label: `${node} ${cli}` })
+    if (process.versions.electron) {
+      candidates.push({
+        command: process.execPath,
+        baseArgs: [cli],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+        label: `ELECTRON_RUN_AS_NODE ${cli}`,
+      })
+    }
+  }
+
+  const shim = join(packageRoot(), 'node_modules', '.bin', 'wrangler')
+  if (existsSync(shim)) candidates.push({ command: shim, baseArgs: [], label: shim })
+  const onPath = whichSync('wrangler')
+  if (onPath) candidates.push({ command: onPath, baseArgs: [], label: onPath })
+  return candidates
+}
+
+let resolvedCommand: WranglerCommand | null = null
+
+function wranglerCommand(): WranglerCommand {
+  if (resolvedCommand) return resolvedCommand
+  for (const candidate of wranglerCandidates()) {
+    try {
+      const probe = spawnSync(candidate.command, [...candidate.baseArgs, '--version'], {
+        encoding: 'utf8',
+        timeout: 15_000,
+        env: candidate.env ? { ...process.env, ...candidate.env } : process.env,
+      })
+      if (probe.status === 0) {
+        resolvedCommand = candidate
+        return candidate
+      }
+    } catch {
+      // 下一个候选
+    }
+  }
+  return { command: 'wrangler', baseArgs: [], label: 'wrangler' }
 }
 
 function stripAnsi(text: string): string {
@@ -151,7 +189,11 @@ export class CloudflareDeployer {
     this.checkedAt = now
     try {
       const cli = wranglerCommand()
-      const result = spawnSync(cli.command, [...cli.baseArgs, 'whoami'], { encoding: 'utf8', timeout: 12_000 })
+      const result = spawnSync(cli.command, [...cli.baseArgs, 'whoami'], {
+        encoding: 'utf8',
+        timeout: 15_000,
+        env: cli.env ? { ...process.env, ...cli.env } : process.env,
+      })
       const output = stripAnsi(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
       const notLoggedIn = /not logged in|You are not authenticated/i.test(output)
       if (notLoggedIn) {
@@ -176,9 +218,12 @@ export class CloudflareDeployer {
     this.error = ''
     this.authorizeUrl = ''
     const cli = wranglerCommand()
-    this.log = `wrangler: ${[cli.command, ...cli.baseArgs].join(' ')}\n`
+    this.log = `wrangler: ${cli.label}\n`
     try {
-      const child = spawn(cli.command, [...cli.baseArgs, 'login'], { cwd: packageRoot(), env: process.env })
+      const child = spawn(cli.command, [...cli.baseArgs, 'login'], {
+        cwd: packageRoot(),
+        env: cli.env ? { ...process.env, ...cli.env } : process.env,
+      })
       this.login = child
       const onData = (chunk: Buffer): void => {
         const text = stripAnsi(chunk.toString())
@@ -221,13 +266,13 @@ export class CloudflareDeployer {
     if (this.deploy) return this.getStatus()
     this.error = ''
     const cli = wranglerCommand()
-    this.log = `wrangler: ${[cli.command, ...cli.baseArgs].join(' ')}\n`
+    this.log = `wrangler: ${cli.label}\n`
     try {
       // 显式指定 config：当前目录往上可能有别人的 wrangler.jsonc，会被误用
       const child = spawn(
         cli.command,
         [...cli.baseArgs, 'deploy', '--config', join(packageRoot(), 'wrangler.toml')],
-        { cwd: packageRoot(), env: process.env },
+        { cwd: packageRoot(), env: cli.env ? { ...process.env, ...cli.env } : process.env },
       )
       this.deploy = child
       const onData = (chunk: Buffer): void => {
@@ -254,7 +299,11 @@ export class CloudflareDeployer {
   logout(): CloudflareStatus {
     try {
       const cli = wranglerCommand()
-      spawnSync(cli.command, [...cli.baseArgs, 'logout'], { encoding: 'utf8', timeout: 8000 })
+      spawnSync(cli.command, [...cli.baseArgs, 'logout'], {
+        encoding: 'utf8',
+        timeout: 10_000,
+        env: cli.env ? { ...process.env, ...cli.env } : process.env,
+      })
     } catch {
       // 忽略
     }

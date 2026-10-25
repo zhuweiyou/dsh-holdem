@@ -66,11 +66,6 @@ export function Table({ view }: { view: PlayerView }) {
               {state.connection === 'live' ? '●' : state.connection === 'polling' ? '◐' : '○'}
             </span>
             <span className={css.spectatorCount}>{t('common.spectators', { n: view.spectators.length })}</span>
-            {room.shareable ? null : (
-              <button type="button" className={css.localTag} onClick={() => setInviteOpen(true)}>
-                {t('table.localOnly')}
-              </button>
-            )}
           </div>
         </div>
         <div className={css.headerActions}>
@@ -300,7 +295,7 @@ export function Table({ view }: { view: PlayerView }) {
   )
 }
 
-const RAIL_KEY = 'holdem-p2p:rail'
+const RAIL_KEY = 'holdem:rail'
 
 function readRailPref(): boolean {
   try {

@@ -55,30 +55,27 @@ export function requestOrigin(req: IncomingMessage): string | null {
   return null
 }
 
-export function originAllowed(origin: string | null, publicBaseUrl: string, browser: boolean): boolean {
+export function originAllowed(origin: string | null, browser: boolean): boolean {
   if (!origin) return !browser
-  if (isLoopbackOrigin(origin)) return true
-  if (isPrivateOrigin(origin)) return true
-  if (publicBaseUrl !== '' && origin === publicBaseUrl) return true
-  return false
+  return isLoopbackOrigin(origin) || isPrivateOrigin(origin)
 }
 
 export function isBrowserRequest(req: IncomingMessage): boolean {
   return Boolean(header(req, 'origin') || header(req, 'sec-fetch-site'))
 }
 
-export function assertOrigin(req: IncomingMessage, publicBaseUrl: string): void {
+export function assertOrigin(req: IncomingMessage): void {
   if (header(req, 'sec-fetch-site') === 'cross-site') {
     throw Object.assign(new Error('cross-site forbidden'), { status: 403, code: 'auth' })
   }
-  if (!originAllowed(requestOrigin(req), publicBaseUrl, isBrowserRequest(req))) {
+  if (!originAllowed(requestOrigin(req), isBrowserRequest(req))) {
     throw Object.assign(new Error('origin not allowed'), { status: 403, code: 'auth' })
   }
 }
 
 /** 变更请求必须带 JSON 与自定义请求头（跨源页面设不了后者）。 */
 export function assertMutatingHeaders(req: IncomingMessage): void {
-  if (header(req, 'x-requested-with') === 'dsh-holdem-p2p') return
+  if (header(req, 'x-requested-with') === '@zhuweiyou/dsh-holdem') return
   const contentType = header(req, 'content-type') ?? ''
   if (contentType.includes('application/json') && header(req, 'x-requested-with')) return
   throw Object.assign(new Error('missing csrf header'), { status: 403, code: 'auth' })

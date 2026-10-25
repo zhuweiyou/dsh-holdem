@@ -132,7 +132,6 @@ export interface RoomView {
   /** handOver 阶段自动开下一手的时间点；其它阶段为 null。 */
   nextHandAt: string | null
   seq: number
-  shareable: boolean
   /** 一条链接搞定：有空位就入座，没空位自动转观战。 */
   joinUrl: string
   /** 同一个局域网里可以直接用的地址（没有可用网卡时为空）。 */

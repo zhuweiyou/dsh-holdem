@@ -47,17 +47,7 @@ function sessionOf(manager: RoomManager, tokens: string[], roomId?: string) {
   return sessions[0]
 }
 
-/** 开房就自动起隧道：房间一创建邀请链接就该是公网地址。 */
-function startTunnelIfNeeded(manager: RoomManager, tunnel?: TunnelLike): void {
-  if (!tunnel || !manager.getConfig().autoTunnel) return
-  if (manager.getConfig().publicBaseUrl !== '') return
-  void tunnel.start().then((status) => {
-    const next = status as { state: string; url: string }
-    if (next.state === 'on' && next.url) manager.setPublicBaseUrl(next.url)
-  })
-}
-
-/** 临时诊断日志：把每个请求的结果写到 ~/.dsh/holdem-p2p/debug.jsonl */
+/** 临时诊断日志：把每个请求的结果写到 ~/.dsh/holdem/debug.jsonl */
 function trace(req: IncomingMessage, res: ServerResponse): void {
   const started = Date.now()
   res.on('finish', () => {
@@ -74,7 +64,7 @@ function trace(req: IncomingMessage, res: ServerResponse): void {
         fetchSite: req.headers['sec-fetch-site'] ?? null,
         cookieNames: cookies,
       })
-      const dir = join(homedir(), '.dsh', 'holdem-p2p')
+      const dir = join(homedir(), '.dsh', 'holdem')
       mkdirSync(dir, { recursive: true })
       appendFileSync(join(dir, 'debug.jsonl'), line + '\n')
     } catch {
@@ -91,12 +81,6 @@ export interface CloudflareLike {
   logout(): unknown
 }
 
-export interface TunnelLike {
-  getStatus(): { state: string; url: string; target: string; error: string }
-  start(): Promise<unknown>
-  stop(): void
-}
-
 /** role=auto 是默认：有空位就入座，满员自动转观战。 */
 function playRole(value: string | null): 'auto' | 'sit' | 'watch' {
   return value === 'watch' ? 'watch' : value === 'sit' ? 'sit' : 'auto'
@@ -105,7 +89,6 @@ function playRole(value: string | null): 'auto' | 'sit' | 'watch' {
 export function registerHoldemHttp(
   server: WebServer,
   manager: RoomManager,
-  tunnel?: TunnelLike,
   cloudflare?: CloudflareLike,
 ): () => void {
   const prefix = manager.getConfig().routePrefix
@@ -129,7 +112,7 @@ export function registerHoldemHttp(
         res.end()
         return
       }
-      void handle(req, res, manager, prefix, tunnel, cloudflare)
+      void handle(req, res, manager, prefix, cloudflare)
     },
   })
 }
@@ -139,7 +122,6 @@ async function handle(
   res: ServerResponse,
   manager: RoomManager,
   prefix: string,
-  tunnel?: TunnelLike,
   cloudflare?: CloudflareLike,
 ): Promise<void> {
   try {
@@ -165,7 +147,6 @@ async function handle(
         code: String(url.searchParams.get('code') ?? ''),
         invite: String(url.searchParams.get('invite') ?? ''),
         role,
-        shareable: manager.getConfig().publicBaseUrl !== '',
       }))
       return
     }
@@ -173,8 +154,7 @@ async function handle(
     if (req.method === 'GET' && path === `${prefix}/api/ready`) {
       json(res, 200, {
         ok: true,
-        plugin: 'dsh-holdem-p2p',
-        shareable: manager.getConfig().publicBaseUrl !== '',
+        plugin: '@zhuweiyou/dsh-holdem',
         turnTimeoutMs: manager.getConfig().turnTimeoutMs,
       })
       return
@@ -192,7 +172,7 @@ async function handle(
         return
       }
       if (req.method === 'POST') {
-        assertOrigin(req, manager.getConfig().publicBaseUrl)
+        assertOrigin(req)
         assertMutatingHeaders(req)
         if (!isLoopbackHost(header(req, 'host'), req.socket.remoteAddress)) throw auth('只能在本机操作 Cloudflare 授权')
         const action = url.searchParams.get('action') ?? ''
@@ -204,33 +184,6 @@ async function handle(
         return
       }
       json(res, 200, cloudflare.getStatus())
-      return
-    }
-
-    if (path === `${prefix}/api/tunnel`) {
-      if (!tunnel) {
-        json(res, 200, { state: 'off', url: '', target: '', error: 'not-supported' })
-        return
-      }
-      if (req.method === 'POST') {
-        assertOrigin(req, manager.getConfig().publicBaseUrl)
-        assertMutatingHeaders(req)
-        if (!isLoopbackHost(header(req, 'host'), req.socket.remoteAddress)) throw auth('只能在本机开启公网分享')
-        const action = url.searchParams.get('action') === 'stop' ? 'stop' : 'start'
-        if (action === 'stop') {
-          tunnel.stop()
-          manager.setPublicBaseUrl('')
-        } else {
-          void tunnel.start().then((status) => {
-            const next = status as { state: string; url: string }
-            if (next.state === 'on' && next.url) manager.setPublicBaseUrl(next.url)
-            else manager.setPublicBaseUrl('')
-          })
-        }
-        json(res, 200, tunnel.getStatus())
-        return
-      }
-      json(res, 200, tunnel.getStatus())
       return
     }
 
@@ -252,12 +205,11 @@ async function handle(
     }
 
     if (req.method === 'POST' && path === `${prefix}/api/rooms`) {
-      assertOrigin(req, manager.getConfig().publicBaseUrl)
+      assertOrigin(req)
       assertMutatingHeaders(req)
       const local = isLoopbackHost(header(req, 'host'), req.socket.remoteAddress)
       if (!local) throw auth('只能在运行 Harness 的本机开房')
       const body = await readJson<{ title?: string; blindLevel?: string; displayName?: string; browserId?: string }>(req)
-      startTunnelIfNeeded(manager, tunnel)
       const created = manager.createRoom({
         title: body.title,
         blindLevel: body.blindLevel,
@@ -269,7 +221,6 @@ async function handle(
         roomCode: created.roomCode,
         hostPlayerId: created.hostPlayerId,
         joinUrl: created.joinUrl,
-        shareable: created.shareable,
         wsTicket: created.wsTicket,
         sessionToken: created.sessionToken,
         view: created.view,
@@ -291,7 +242,7 @@ async function handle(
     }
 
     if (req.method === 'POST' && path === `${prefix}/api/join`) {
-      assertOrigin(req, manager.getConfig().publicBaseUrl)
+      assertOrigin(req)
       assertMutatingHeaders(req)
       const body = await readJson<{
         roomCode?: string
@@ -321,7 +272,7 @@ async function handle(
     }
 
     if (req.method === 'POST' && path === `${prefix}/api/leave`) {
-      assertOrigin(req, manager.getConfig().publicBaseUrl)
+      assertOrigin(req)
       assertMutatingHeaders(req)
       const body = await readJson<{ roomId?: string }>(req).catch(() => ({}) as { roomId?: string })
       const tokens = seatTokens(req, cookies)
@@ -336,7 +287,7 @@ async function handle(
     }
 
     if (req.method === 'POST' && path === `${prefix}/api/ws-ticket`) {
-      assertOrigin(req, manager.getConfig().publicBaseUrl)
+      assertOrigin(req)
       assertMutatingHeaders(req)
       const body = await readJson<{ roomId?: string }>(req).catch(() => ({}) as { roomId?: string })
       const tokens = seatTokens(req, cookies)
@@ -362,7 +313,7 @@ async function handle(
         return
       }
       if (req.method === 'POST' && action === 'action') {
-        assertOrigin(req, manager.getConfig().publicBaseUrl)
+        assertOrigin(req)
         assertMutatingHeaders(req)
         const body = await readJson<{
           actionId?: string
@@ -392,7 +343,7 @@ async function handle(
 
 function seatCookie(manager: RoomManager, token: string, roomId: string): string {
   return cookieHeader(seatCookieName(roomId), token, {
-    secure: manager.getConfig().publicBaseUrl.startsWith('https://'),
+    secure: false,
     sameSite: 'Lax',
     maxAge: 86400,
     path: manager.getConfig().routePrefix,
@@ -401,7 +352,7 @@ function seatCookie(manager: RoomManager, token: string, roomId: string): string
 
 function clearSeatCookie(manager: RoomManager, roomId: string): string {
   return cookieHeader(seatCookieName(roomId), '', {
-    secure: manager.getConfig().publicBaseUrl.startsWith('https://'),
+    secure: false,
     sameSite: 'Lax',
     maxAge: 0,
     path: manager.getConfig().routePrefix,

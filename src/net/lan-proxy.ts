@@ -3,7 +3,7 @@ import net from 'node:net'
 
 /**
  * DSH 的 Web 服务只监听 127.0.0.1，同 Wi-Fi 的朋友连不上。
- * 这里起一个只转发 `/holdem-p2p/*`（HTTP + WS）的小代理，绑到 0.0.0.0，
+ * 这里起一个只转发 `/holdem/*`（HTTP + WS）的小代理，绑到 0.0.0.0，
  * 用它的端口生成「局域网邀请链接」。
  */
 export interface LanProxy {

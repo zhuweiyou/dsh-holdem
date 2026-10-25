@@ -1,17 +1,17 @@
 {
-  "name": "dsh-holdem-p2p",
+  "name": "@zhuweiyou/dsh-holdem",
   "version": "0.1.0",
-  "description": "点对点德州扑克：房主进程即服务端，6 人桌、超员观战、多局累计排行榜。",
+  "description": "德州扑克：6 人桌、超员自动观战、多局排行榜；牌桌可跑在本机或 Cloudflare Worker 上。",
   "keywords": [
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
     "texas-holdem",
     "poker",
-    "peer-to-peer"
+    "cloudflare-workers"
   ],
   "license": "MIT",
-  "author": "",
+  "author": "zhuweiyou",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -30,6 +30,7 @@
   },
   "files": [
     "lib",
+    "worker",
     "cordis.patch.yml",
     "locale",
     "icon.svg",

@@ -5,10 +5,10 @@ import { DICTS, setTranslator } from './i18n.ts'
 import { registerClientSlots } from './slots.tsx'
 import { dispose } from './store.ts'
 
-export const name = 'dsh-holdem-p2p-client'
+export const name = '@zhuweiyou/dsh-holdem-client'
 export const inject = ['slots', 'layout', 'locale']
 
-const NS = 'holdem-p2p'
+const NS = 'holdem'
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
@@ -22,18 +22,18 @@ export function apply(ctx: ClientContext): void {
       offEn()
       offLocale()
     }
-  }, 'holdem-p2p: locale')
+  }, 'holdem: locale')
 
   ctx.effect(() => {
     registerClientSlots(ctx)
-    // 邀请深链：/ ?dsh-panel=holdem-p2p&code=...&invite=...
+    // 邀请深链：/ ?dsh-panel=holdem&code=...&invite=...
     try {
       const params = new URLSearchParams(location.search)
       if (params.get('dsh-panel') === PANEL_KEY) ctx.layout.selectPanel(PANEL_KEY)
     } catch {
       // ignore
     }
-  }, 'holdem-p2p: slots')
+  }, 'holdem: slots')
 
-  ctx.effect(() => () => dispose(), 'holdem-p2p: dispose')
+  ctx.effect(() => () => dispose(), 'holdem: dispose')
 }
