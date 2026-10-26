@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { whichSync } from './which.ts'
 
 /**
@@ -53,34 +54,48 @@ function writeStored(next: StoredState): void {
 }
 
 /**
- * 插件根目录：从当前模块位置往上找 package.json（打包后是 lib/index.js，
+ * 插件根目录：从当前模块位置往上找 wrangler.toml（打包后是 lib/index.js，
  * 源码里是 src/net/cloudflare.ts，层级不一样，不能写死 .. 的层数）。
+ *
+ * 用 fileURLToPath 而不是 `new URL(...).pathname`：Windows 上 pathname 是
+ * "/C:/Users/..."，拼出来的路径会变成 "C:\C:\Users\..."，existsSync 全部为假，
+ * 拿它当 spawn 的 cwd 会直接 ENOENT（且是异步 error 事件，会崩掉整个进程）。
  */
-function packageRoot(): string {
-  let dir = dirname(new URL(import.meta.url).pathname)
+export function packageRoot(moduleUrl: string = import.meta.url): string {
+  const start = dirname(fileURLToPath(moduleUrl))
+  let dir = start
   for (let depth = 0; depth < 5; depth += 1) {
     if (existsSync(join(dir, 'wrangler.toml'))) return dir
     const parent = resolve(dir, '..')
     if (parent === dir) break
     dir = parent
   }
-  return resolve(dirname(new URL(import.meta.url).pathname), '..')
+  return resolve(start, '..')
+}
+
+/** wrangler 的全局配置目录（和它自己的 getGlobalConfigPath 一致，按平台分）。 */
+function wranglerGlobalConfigDirs(): string[] {
+  const home = homedir()
+  const xdgBase =
+    process.env.XDG_CONFIG_HOME ??
+    (process.platform === 'darwin'
+      ? join(home, 'Library', 'Preferences')
+      : process.platform === 'win32'
+        ? join(process.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'xdg.config')
+        : join(home, '.config'))
+  // ~/.wrangler 是 wrangler 的旧目录，存在就优先用；否则用 XDG 目录
+  return [join(home, '.wrangler'), join(xdgBase, '.wrangler')]
 }
 
 function wranglerCredentialFiles(): string[] {
-  const home = homedir()
-  return [
-    join(home, 'Library', 'Preferences', '.wrangler', 'config', 'default.toml'),
-    join(home, '.config', '.wrangler', 'config', 'default.toml'),
-    join(home, '.wrangler', 'config', 'default.toml'),
-  ]
+  return wranglerGlobalConfigDirs().map((dir) => join(dir, 'config', 'default.toml'))
 }
 
 function hasWranglerCredentials(): boolean {
   return wranglerCredentialFiles().some((file) => existsSync(file))
 }
 
-interface WranglerCommand {
+export interface WranglerCommand {
   command: string
   baseArgs: string[]
   env?: Record<string, string>
@@ -153,6 +168,45 @@ function wranglerCommand(): WranglerCommand {
   return { command: 'wrangler', baseArgs: [], label: 'wrangler' }
 }
 
+/** 子进程工作目录：只在真的存在时才传给 spawn，否则 Windows 上直接 ENOENT。 */
+function workingDirectory(): string | undefined {
+  const dir = packageRoot()
+  return existsSync(dir) ? dir : undefined
+}
+
+function describeSpawnError(error: NodeJS.ErrnoException, cli: WranglerCommand): string {
+  if (error.code === 'ENOENT') {
+    return `找不到可用的 wrangler（尝试过：${cli.label}）。请安装 Node 或全局 wrangler。`
+  }
+  return error.message
+}
+
+/**
+ * 起一个 wrangler 子进程。
+ *
+ * 必须挂 `error` 监听：spawn 失败（ENOENT、cwd 不存在）是**异步**的 error 事件，
+ * 没人监听就会冒泡成 uncaughtException，把整个 dsh 进程一起带走。
+ */
+export function spawnWrangler(
+  cli: WranglerCommand,
+  args: string[],
+  hooks: {
+    onData: (text: string) => void
+    onExit: (code: number | null) => void
+    onError: (message: string) => void
+  },
+): ChildProcessWithoutNullStreams {
+  const child = spawn(cli.command, [...cli.baseArgs, ...args], {
+    cwd: workingDirectory(),
+    env: cli.env ? { ...process.env, ...cli.env } : process.env,
+  })
+  child.stdout.on('data', (chunk: Buffer) => hooks.onData(stripAnsi(chunk.toString())))
+  child.stderr.on('data', (chunk: Buffer) => hooks.onData(stripAnsi(chunk.toString())))
+  child.on('error', (error: NodeJS.ErrnoException) => hooks.onError(describeSpawnError(error, cli)))
+  child.on('exit', (code) => hooks.onExit(code))
+  return child
+}
+
 function stripAnsi(text: string): string {
   return text.replace(/[\u001b\u009b][[()#;?]*(?:\d{1,4}(?:;\d{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
 }
@@ -220,29 +274,29 @@ export class CloudflareDeployer {
     const cli = wranglerCommand()
     this.log = `wrangler: ${cli.label}\n`
     try {
-      const child = spawn(cli.command, [...cli.baseArgs, 'login'], {
-        cwd: packageRoot(),
-        env: cli.env ? { ...process.env, ...cli.env } : process.env,
-      })
-      this.login = child
-      const onData = (chunk: Buffer): void => {
-        const text = stripAnsi(chunk.toString())
-        this.log = `${this.log}${text}`
-        const match = OAUTH_PATTERN.exec(text)
-        if (match && this.authorizeUrl === '') {
-          // wrangler login 自己会拉起浏览器；这里只把链接暴露给界面，
-          // 万一浏览器没弹出来，用户可以复制这条链接手动打开。
-          this.authorizeUrl = match[0]
-        }
-      }
-      child.stdout.on('data', onData)
-      child.stderr.on('data', onData)
-      child.on('exit', (code) => {
-        this.login = null
-        this.checkedAt = 0
-        if (code !== 0) this.error = 'Cloudflare 授权没有完成'
+      this.login = spawnWrangler(cli, ['login'], {
+        onData: (text) => {
+          this.log = `${this.log}${text}`
+          const match = OAUTH_PATTERN.exec(text)
+          if (match && this.authorizeUrl === '') {
+            // wrangler login 自己会拉起浏览器；这里只把链接暴露给界面，
+            // 万一浏览器没弹出来，用户可以复制这条链接手动打开。
+            this.authorizeUrl = match[0]
+          }
+        },
+        onExit: (code) => {
+          this.login = null
+          this.checkedAt = 0
+          if (code !== 0) this.error = 'Cloudflare 授权没有完成'
+        },
+        onError: (message) => {
+          this.login = null
+          this.checkedAt = 0
+          this.error = message
+        },
       })
     } catch (error) {
+      this.login = null
       this.error = error instanceof Error ? error.message : String(error)
     }
     return this.getStatus()
@@ -269,28 +323,26 @@ export class CloudflareDeployer {
     this.log = `wrangler: ${cli.label}\n`
     try {
       // 显式指定 config：当前目录往上可能有别人的 wrangler.jsonc，会被误用
-      const child = spawn(
-        cli.command,
-        [...cli.baseArgs, 'deploy', '--config', join(packageRoot(), 'wrangler.toml')],
-        { cwd: packageRoot(), env: cli.env ? { ...process.env, ...cli.env } : process.env },
-      )
-      this.deploy = child
-      const onData = (chunk: Buffer): void => {
-        const text = stripAnsi(chunk.toString())
-        this.log = `${this.log}${text}`
-        const match = WORKER_URL_PATTERN.exec(text)
-        if (match) {
-          this.stored = { ...this.stored, workerUrl: match[0].replace(/\/$/, '') }
-          writeStored(this.stored)
-        }
-      }
-      child.stdout.on('data', onData)
-      child.stderr.on('data', onData)
-      child.on('exit', (code) => {
-        this.deploy = null
-        if (code !== 0 && this.stored.workerUrl === '') this.error = '部署失败，看看 wrangler 输出的日志'
+      this.deploy = spawnWrangler(cli, ['deploy', '--config', join(packageRoot(), 'wrangler.toml')], {
+        onData: (text) => {
+          this.log = `${this.log}${text}`
+          const match = WORKER_URL_PATTERN.exec(text)
+          if (match) {
+            this.stored = { ...this.stored, workerUrl: match[0].replace(/\/$/, '') }
+            writeStored(this.stored)
+          }
+        },
+        onExit: (code) => {
+          this.deploy = null
+          if (code !== 0 && this.stored.workerUrl === '') this.error = '部署失败，看看 wrangler 输出的日志'
+        },
+        onError: (message) => {
+          this.deploy = null
+          this.error = message
+        },
       })
     } catch (error) {
+      this.deploy = null
       this.error = error instanceof Error ? error.message : String(error)
     }
     return this.getStatus()
